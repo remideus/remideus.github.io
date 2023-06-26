@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WhatsApp Link Generator</title>
+  <script>
+    function generateWhatsAppLink() {
+        var areaCodeInput = document.getElementById('areaCode').value;
+        var phoneInput = document.getElementById('phone').value;
+        var linkInput = document.getElementById('link').value;
+        var whatsappLink = `https://${linkInput}${areaCodeInput}${phoneInput}`;
+        var resultContainer = document.getElementById('result');
+        resultContainer.innerHTML = `<a href="${whatsappLink}" target="_blank">${whatsappLink}</a>`;
+    }
+
+    function displayMessage() {
+      var name = document.getElementById("nameInput").value;
+      var message = document.getElementById("messageInput").value;
+      message = message.replace(/<name>/, name);
+      document.getElementById("message").innerHTML = message;
+    }
+
+    function copyMessage() {
+      var messageInput = document.getElementById("message");
+      messageInput.select();
+      messageInput.setSelectionRange(0, 99999);
+      document.execCommand("copy");
+      alert("Message copied to clipboard!");
+    }
+
+    function updateTextareaSize() {
+      var rows = document.getElementById("rowsInput").value;
+      var cols = document.getElementById("colsInput").value;
+      document.getElementById("messageInput").rows = rows;
+      document.getElementById("messageInput").cols = cols;
+      document.getElementById("message").rows = rows;
+      document.getElementById("message").cols = cols;
+    }
+
+  </script>
+</head>
+<body>
+  <h2>WhatsApp Link Generator</h2>
+  <label for="areaCode">Area Code Number:</label>
+  <input type="text" id="areaCode" placeholder="Enter area code number">
+  <br>
+  <label for="phone">Phone Number:</label>
+  <input type="text" id="phone" placeholder="Enter phone number">
+  <br>
+  <label for="link">Link:</label>
+  <input type="text" id="link" placeholder="Enter link">
+  <br>
+  <button onclick="generateWhatsAppLink()">Generate WhatsApp Link</button>
+  <div id="result"></div>
+  <label for="nameInput">Enter your name:</label>
+  <input type="text" id="nameInput">
+  <br>
+  <label for="messageInput">Enter your message:</label>
+  <br>
+  <textarea id="messageInput" rows="4" cols="50" oninput="displayMessage()"></textarea>
+  <br>
+  <textarea id="message" rows="4" cols="50" oninput="displayMessage()" readonly></textarea>
+  <button onclick="copyMessage()">Copy</button>
+  <br>
+  <label for="rowsInput">Rows:</label>
+  <input type="number" id="rowsInput" min="1" value="4">
+  <label for="colsInput">Columns:</label>
+  <input type="number" id="colsInput" min="1" value="50">
+  <br>
+  <button onclick="updateTextareaSize()">Update Size</button>
+  <br>
+</body>
+</html>
