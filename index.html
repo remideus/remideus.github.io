@@ -1,107 +1,177 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>My Projects</title>
-  <!-- Bootstrap CSS -->
-  <link
-    rel="stylesheet"
-    href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
-  />
-  <style>
-    body {
-      padding-top: 70px; /* Spacing to prevent navbar overlap */
-    }
-    .content-frame {
-      border: none;
-      width: 100%;
-      height: 600px; /* Adjust as needed */
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Offline pallet counting and inventory record app">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<title>Pallet Counter</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;background:#fff}
+*{box-sizing:border-box}body{margin:0;padding:14px}main{max-width:720px;margin:auto}
+h1{font-size:24px;margin:0 0 4px}.today{color:#555;margin:0 0 14px}
+.card{border:1px solid #bbb;border-radius:14px;padding:14px;margin:12px 0}
+h2{font-size:18px;margin:0 0 5px}p{font-size:13px;color:#555;margin:4px 0 12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+label{display:block;font-size:14px;font-weight:650}input{width:100%;min-height:48px;margin-top:5px;padding:10px;border:1px solid #999;border-radius:10px;font-size:18px;background:#fff}
+.results{display:grid;grid-template-columns:1fr 1fr;gap:10px}.box{border:1px solid #bbb;border-radius:12px;padding:12px}.num{font-size:25px;font-weight:750}
+.total{text-align:center;border:2px solid #555;border-radius:14px;padding:17px;margin:12px 0}.total .num{font-size:40px}
+.actions{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;font-size:17px;font-weight:750}
+#save{background:#111;color:#fff}.status{text-align:center;min-height:22px;margin:8px 0;color:#555;font-size:14px}
+.historyHead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.historyHead button{min-height:40px;font-size:14px;padding:6px 10px}
+.day{border-top:2px solid #555;padding-top:10px;margin-top:14px}.day h3{margin:0 0 7px;font-size:17px}
+.record{display:grid;grid-template-columns:1fr auto;gap:12px;padding:10px 2px;border-top:1px solid #ddd;align-items:center}.record:first-of-type{border-top:0}
+.code{font-weight:700}.loadRecord{width:auto;min-height:44px;margin:0;padding:4px 8px;border:1px solid #aaa;border-radius:9px;background:#fff;color:#111;text-align:left;font-size:16px}.amount{font-size:18px;font-weight:750}.time{font-size:12px;color:#666}
+.recordRight{display:flex;align-items:center;gap:10px}.deleteRecord{width:44px;min-width:44px;min-height:44px;margin:0;padding:0;border:1px solid #999;border-radius:10px;background:#fff;color:#111;font-size:25px;line-height:1;font-weight:700}
+.empty{color:#666;font-size:14px;padding:8px 0}
+@media(max-width:420px){.grid3{grid-template-columns:1fr 1fr}.actions{grid-template-columns:2fr 1fr}}
+</style>
 </head>
 <body>
-  <!-- Navigation Bar (optional) -->
-  <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
-    <a class="navbar-brand" href="#">My Projects</a>
-    <button
-      class="navbar-toggler"
-      type="button"
-      data-toggle="collapse"
-      data-target="#navbarNav"
-      aria-controls="navbarNav"
-      aria-expanded="false"
-      aria-label="Toggle navigation"
-    >
-      <span class="navbar-toggler-icon"></span>
-    </button>
-  </nav>
+<main>
+<h1>Pallet Counter</h1>
+<div class="today" id="today"></div>
 
-  <!-- Main Content with Tabs -->
-  <div class="container">
-    <!-- Tab Navigation -->
-    <ul class="nav nav-tabs" id="projectTabs" role="tablist">
-      <li class="nav-item">
-        <a
-          class="nav-link active"
-          id="importExcel-tab"
-          data-toggle="tab"
-          href="#importExcel"
-          role="tab"
-          aria-controls="importExcel"
-          aria-selected="true"
-        >
-          Import Excel
-        </a>
-      </li>
-      <li class="nav-item">
-        <a
-          class="nav-link"
-          id="whatsAppLink-tab"
-          data-toggle="tab"
-          href="#whatsAppLink"
-          role="tab"
-          aria-controls="whatsAppLink"
-          aria-selected="false"
-        >
-          WhatsApp Link
-        </a>
-      </li>
-    </ul>
+<label>Product Code<input id="product" type="text" autocomplete="off" placeholder="e.g. OP-15"></label>
 
-    <!-- Tab Content -->
-    <div class="tab-content" id="projectTabsContent">
-      <div
-        class="tab-pane fade show active"
-        id="importExcel"
-        role="tabpanel"
-        aria-labelledby="importExcel-tab"
-      >
-        <!-- Embed importExcel.html -->
-        <iframe src="importExcel.html" class="content-frame"></iframe>
-      </div>
-      <div
-        class="tab-pane fade"
-        id="whatsAppLink"
-        role="tabpanel"
-        aria-labelledby="whatsAppLink-tab"
-      >
-        <!-- Embed whatsapplink.html -->
-        <iframe src="whatsapplink.html" class="content-frame"></iframe>
-      </div>
-    </div>
-  </div>
+<section class="card">
+<h2>Last / Incomplete Pallet</h2>
+<p>Enter the actual layout of the remaining pallet.</p>
+<div class="grid2">
+<label>Boxes Width<input id="lw" type="number" inputmode="numeric" min="0"></label>
+<label>Boxes Length<input id="ll" type="number" inputmode="numeric" min="0"></label>
+<label>Layers High<input id="lh" type="number" inputmode="numeric" min="0"></label>
+<label>Extra / Remove<input id="extra" type="number" inputmode="numeric" value="0"></label>
+</div>
+</section>
 
-  <!-- Footer -->
-  <footer class="footer mt-auto py-3 bg-light">
-    <div class="container text-center">
-      <span class="text-muted">&copy; 2025 Remidis. All rights reserved.</span>
-    </div>
-  </footer>
+<section class="card">
+<h2>Full Pallets</h2>
+<label>Number of Full Pallets<input id="fp" type="number" inputmode="numeric" min="0" value="0"></label>
+<div class="grid3" style="margin-top:10px">
+<label>Width<input id="fw" type="number" inputmode="numeric" min="0"></label>
+<label>Length<input id="fl" type="number" inputmode="numeric" min="0"></label>
+<label>Layers<input id="fh" type="number" inputmode="numeric" min="0"></label>
+</div>
+</section>
 
-  <!-- Bootstrap JS, Popper.js, and jQuery -->
-  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<section class="card"><label>Items per Box<input id="items" type="number" inputmode="numeric" min="0"></label></section>
+
+<div class="results">
+<div class="box"><div>Last pallet boxes</div><div class="num" id="lastBoxes">0</div></div>
+<div class="box"><div>Full pallet boxes</div><div class="num" id="fullBoxes">0</div></div>
+</div>
+<div class="total"><div>TOTAL ITEMS</div><div class="num" id="total">0</div><div id="breakdown">0 total boxes</div></div>
+
+<div class="actions"><button id="save" type="button">SAVE COUNT</button><button id="clear" type="button">Clear</button></div>
+<div class="status" id="status" aria-live="polite"></div>
+
+<section class="card">
+<div class="historyHead"><h2>Saved Inventory</h2><button id="export" type="button">Export CSV</button></div>
+<p>Records are grouped by date. Tap a product code to load its saved calculator inputs.</p>
+<div id="history"></div>
+</section>
+</main>
+
+<script>
+const ids=['lw','ll','lh','extra','fp','fw','fl','fh','items'];
+const el=id=>document.getElementById(id);
+const num=id=>{const v=Number(el(id).value);return Number.isFinite(v)?v:0};
+const whole=v=>Math.max(0,Math.floor(v));
+const KEY='palletCounterRecordsV1';
+
+function dateKey(d=new Date()){
+ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');
+ return `${y}-${m}-${day}`;
+}
+function displayDate(key){
+ const [y,m,d]=key.split('-').map(Number);
+ return new Date(y,m-1,d).toLocaleDateString(undefined,{weekday:'long',day:'2-digit',month:'short',year:'numeric'});
+}
+function calc(){
+ const last=Math.max(0,whole(num('lw'))*whole(num('ll'))*whole(num('lh'))+Math.trunc(num('extra')));
+ const full=whole(num('fp'))*whole(num('fw'))*whole(num('fl'))*whole(num('fh'));
+ const boxes=last+full, per=whole(num('items')), total=boxes*per;
+ el('lastBoxes').textContent=last.toLocaleString();
+ el('fullBoxes').textContent=full.toLocaleString();
+ el('total').textContent=total.toLocaleString();
+ el('breakdown').textContent=`${boxes.toLocaleString()} total boxes × ${per.toLocaleString()} items/box`;
+ return {last,full,boxes,per,total};
+}
+function getRecords(){
+ try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){return[]}
+}
+function putRecords(r){localStorage.setItem(KEY,JSON.stringify(r))}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function renderHistory(){
+ const r=getRecords(), host=el('history');
+ if(!r.length){host.innerHTML='<div class="empty">No saved counts yet.</div>';return}
+ const groups={};
+ r.forEach(x=>(groups[x.date]??=[]).push(x));
+ host.innerHTML=Object.keys(groups).sort().map(date=>`
+  <div class="day"><h3>${esc(displayDate(date))}</h3>
+  ${groups[date].map(x=>{const idx=r.indexOf(x);return `<div class="record"><div><button type="button" class="code loadRecord" data-index="${idx}">${esc(x.code)}</button></div><div class="recordRight"><div class="amount">${Number(x.amount).toLocaleString()}</div><button type="button" class="deleteRecord" data-index="${idx}" aria-label="Delete ${esc(x.code)}">−</button></div></div>`}).join('')}
+  </div>`).join('');
+}
+el('history').addEventListener('click',e=>{
+ const loadBtn=e.target.closest('.loadRecord');
+ if(loadBtn){
+  const idx=Number(loadBtn.dataset.index),r=getRecords();
+  if(!Number.isInteger(idx)||idx<0||idx>=r.length)return;
+  const rec=r[idx];
+  if(!rec.inputs){el('status').textContent='Older record has no saved inputs. Recalculate and save it once.';return}
+  el('product').value=rec.code;
+  ids.forEach(id=>el(id).value=rec.inputs[id]??'');
+  calc(); window.scrollTo({top:0,behavior:'smooth'});
+  el('status').textContent=`Loaded ${rec.code}. Change values and SAVE COUNT to overwrite.`;
+  return;
+ }
+ const btn=e.target.closest('.deleteRecord');
+ if(!btn)return;
+ const idx=Number(btn.dataset.index), r=getRecords();
+ if(!Number.isInteger(idx)||idx<0||idx>=r.length)return;
+ const removed=r[idx]; r.splice(idx,1); putRecords(r); renderHistory();
+ el('status').textContent=`Deleted ${removed.code}.`;
+});
+function resetInputs(){
+ document.querySelectorAll('input').forEach(x=>x.value='');
+ el('fp').value='0';el('extra').value='0';calc();el('product').focus();
+}
+ids.forEach(id=>el(id).addEventListener('input',calc));
+el('save').addEventListener('click',()=>{
+ const code=el('product').value.trim(), c=calc();
+ if(!code){el('status').textContent='Enter a product code before saving.';el('product').focus();return}
+ if(c.total<=0){el('status').textContent='Total items must be more than 0.';return}
+ const now=new Date(), today=dateKey(now), r=getRecords();
+ const existing=r.findIndex(x=>x.date===today && String(x.code).toLowerCase()===code.toLowerCase());
+ const record={date:today,code,amount:c.total,inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value}};
+ if(existing>=0) r[existing]=record; else r.push(record);
+ putRecords(r);renderHistory();
+ el('status').textContent=`Saved ${code}: ${c.total.toLocaleString()} items. Same code today will be overwritten.`;
+ resetInputs();
+});
+el('clear').addEventListener('click',()=>{resetInputs();el('status').textContent='Calculator cleared.'});
+el('export').addEventListener('click',()=>{
+ const r=getRecords(); if(!r.length){el('status').textContent='There are no records to export.';return}
+ const rows=[['Date','Product Code','Amount'],...r.map(x=>[x.date,x.code,x.amount])];
+ const csv=rows.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+ const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='pallet-inventory-records.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+el('today').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+calc();renderHistory();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+  });
+}
+</script>
 </body>
 </html>
