@@ -1,21 +1,20 @@
-PALLET COUNTER PWA
+Pallet Counter PWA v2
+Added Loose / Partial Items.
 
-This folder is ready to host as a Progressive Web App (PWA).
+Example:
+A normal full box contains 216 cards.
+If 36 cards are sold, 180 cards remain.
+Enter 180 under Loose / Partial Items.
 
-Files:
-- index.html
-- manifest.webmanifest
-- service-worker.js
-- icon-192.png
-- icon-512.png
+When updating GitHub Pages, replace the old files with these files and commit the changes.
 
-IMPORTANT:
-A PWA must be served from HTTPS (for example GitHub Pages). Opening index.html directly from Android storage will not install it as a PWA.
+V3 UPDATE
+Loose / Partial Items is now a calculation input.
+Example: enter 5 * 36 and 180 will be added to the total.
+Supported operators: + - * / and parentheses.
 
-After hosting:
-1. Open the HTTPS site in Chrome on Android.
-2. Chrome menu (⋮) > Add to Home screen / Install app.
-3. Launch Pallet Counter from its home-screen icon.
-4. The service worker caches the app for offline use after the first successful load.
-
-Inventory records remain stored locally in that browser/app installation. Use Export CSV periodically as a backup.
+V4 UPDATE
+Partial / Loose Calculation now uses two numeric inputs:
+Quantity × Items Each.
+Example: 5 × 36 = 180, automatically added to the total.
+For a single loose quantity such as 10, use 10 × 1.

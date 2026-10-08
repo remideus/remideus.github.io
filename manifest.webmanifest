@@ -1,7 +1,6 @@
 {
   "name": "Pallet Counter",
   "short_name": "Pallet Counter",
-  "description": "Pallet calculator with saved daily inventory records",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
