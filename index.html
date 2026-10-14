@@ -45,8 +45,8 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <h2>Last / Incomplete Pallet</h2>
 <p>Enter the actual layout of the remaining pallet.</p>
 <div class="grid2">
-<label>Boxes Width<input id="lw" type="number" inputmode="numeric" min="0"></label>
-<label>Boxes Length<input id="ll" type="number" inputmode="numeric" min="0"></label>
+<label>Boxes Width<input id="lw" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 2.5"></label>
+<label>Boxes Length<input id="ll" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 2.5"></label>
 <label>Layers High<input id="lh" type="number" inputmode="numeric" min="0"></label>
 <label>Extra / Remove<input id="extra" type="number" inputmode="numeric" value="0"></label>
 </div>
@@ -56,8 +56,8 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <h2>Full Pallets</h2>
 <label>Number of Full Pallets<input id="fp" type="number" inputmode="numeric" min="0" value="0"></label>
 <div class="grid3" style="margin-top:10px">
-<label>Width<input id="fw" type="number" inputmode="numeric" min="0"></label>
-<label>Length<input id="fl" type="number" inputmode="numeric" min="0"></label>
+<label>Width<input id="fw" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 2.5"></label>
+<label>Length<input id="fl" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 2.5"></label>
 <label>Layers<input id="fh" type="number" inputmode="numeric" min="0"></label>
 </div>
 </section>
@@ -104,6 +104,22 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 
 </div>
 <div id="productPage" class="page" hidden>
+<section class="card" id="poWorkflow"><h2>PO Picking & Daily Job Sheet</h2><p>Save and load POs with outlet, location and New TCG status for each product. Set carton/box quantities directly for each PO product line.</p>
+<div class="results"><label>PO Date<input id="poDate" type="date"></label><label>PO Number<input id="poNumber" type="text" placeholder="PO number"></label></div>
+<div id="poDateWarning" class="hint" role="status"></div>
+<div class="results"><label>Outlet Name<input id="poOutlet" type="text"></label><label>Location<input id="poLocation" type="text"></label></div>
+<h3>Add product to PO</h3><label>Product Code<input id="poCode" type="text" placeholder="Product code"></label>
+<div class="results"><label>Required Qty<input id="poQty" type="number" min="1" step="1" inputmode="numeric"></label><label>New TCG?<select id="poNewTCG"><option value="no">No</option><option value="yes">Yes</option></select></label></div>
+<div class="results" style="margin-top:10px"><label>Carton Qty (items per carton)<input id="poLineCarton" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 144"></label><label>Box Qty (items per box)<input id="poLineBox" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 12"></label></div>
+<label style="margin-top:10px">Load saved carton / box qty<select id="poLinePreset"><option value="">Select saved quantity (optional)</option></select></label>
+<div id="poLineHint" class="hint" aria-live="polite">PO uses the quantities shown here, not the Picking Calculator values.</div>
+<div class="actions"><button id="poAdd" type="button">Add Product</button><button id="poClearLine" type="button">Clear Product</button></div>
+<div id="poLines" class="lookup"></div><div class="total"><div>CALCULATED FULL CARTONS</div><div class="num" id="poCartonTotal">0</div></div>
+<div class="hint" id="poRemainder"></div><label>Additional Cartons (for loose pieces and boxes)<input id="poAdditional" type="number" min="0" step="1" inputmode="numeric" value="0" placeholder="e.g. 2"></label><div class="total"><div>TOTAL CARTONS FOR LABELS</div><div class="num" id="poFinalTotal">0</div></div>
+<div id="poCartonLabel" class="lookup" aria-live="polite"></div>
+<div class="hint" id="poTCGSummary" aria-live="polite">New TCG: No</div>
+<div class="actions"><button id="poSave" type="button">Save PO</button><button id="poNew" type="button">New PO</button><button id="poExport" type="button">Export Daily Job Sheet CSV</button></div>
+<div id="poMessage" class="hint" aria-live="polite"></div><h3>Saved POs</h3><div id="poSaved" class="lookup"></div></section>
 <section class="card"><h2>Picking Calculator</h2><p>Based on the Product Calculator backup workbook. Calculate full cartons, boxes, and loose pieces for a requested quantity.</p>
 <label>Saved Carton / Box Qty<select id="pcSize"></select></label>
 <div class="results" style="margin-top:10px"><label>Carton Qty<input id="dimCarton" type="number" inputmode="numeric" min="1"></label><label>Box Qty<input id="dimBox" type="number" inputmode="numeric" min="1"></label></div>
@@ -122,6 +138,8 @@ const ids=['lw','ll','lh','extra','fp','fw','fl','fh','items','looseQty','looseE
 const el=id=>document.getElementById(id);
 const num=id=>{const v=Number(el(id).value);return Number.isFinite(v)?v:0};
 const whole=v=>Math.max(0,Math.floor(v));
+const decimal=v=>Math.max(0,Number(v)||0);
+const precise=v=>Math.round((v+Number.EPSILON)*1000000)/1000000;
 const KEY='palletCounterRecordsV1';
 
 function dateKey(d=new Date()){
@@ -133,9 +151,9 @@ function displayDate(key){
  return new Date(y,m-1,d).toLocaleDateString(undefined,{weekday:'long',day:'2-digit',month:'short',year:'numeric'});
 }
 function calc(){
- const last=Math.max(0,whole(num('lw'))*whole(num('ll'))*whole(num('lh'))+Math.trunc(num('extra')));
- const full=whole(num('fp'))*whole(num('fw'))*whole(num('fl'))*whole(num('fh'));
- const boxes=last+full, per=whole(num('items')), looseQty=whole(num('looseQty')), looseEach=whole(num('looseEach')), loose=looseQty*looseEach, total=boxes*per+loose;
+ const last=Math.max(0,precise(decimal(num('lw'))*decimal(num('ll'))*whole(num('lh'))+Math.trunc(num('extra'))));
+ const full=precise(whole(num('fp'))*decimal(num('fw'))*decimal(num('fl'))*whole(num('fh')));
+ const boxes=precise(last+full), per=whole(num('items')), looseQty=whole(num('looseQty')), looseEach=whole(num('looseEach')), loose=looseQty*looseEach, total=precise(boxes*per+loose);
  el('lastBoxes').textContent=last.toLocaleString();
  el('fullBoxes').textContent=full.toLocaleString();
  el('total').textContent=total.toLocaleString();
@@ -246,7 +264,12 @@ function dimList(preferred){const sel=pc('pcSize');const keep=preferred||sel.val
  const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Select saved carton / box qty';sel.append(placeholder);
  Object.keys(savedQty).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})).forEach(key=>{const opt=document.createElement('option');opt.value=key;opt.textContent=`${savedQty[key][0]} per carton / ${savedQty[key][1]} per box`;sel.append(opt)});
  sel.value=Object.hasOwn(savedQty,keep)?keep:'';
+ poPresetList();
 }
+function poPresetList(){const sel=pc('poLinePreset');if(!sel)return;const previous=sel.value;sel.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Select saved carton / box qty';sel.append(placeholder);for(const key of Object.keys(savedQty).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))){const opt=document.createElement('option');opt.value=key;opt.textContent=`${savedQty[key][0]} per carton / ${savedQty[key][1]} per box`;sel.append(opt)}sel.value=Object.hasOwn(savedQty,previous)?previous:'';}
+function poLineStatus(){const carton=Number(pc('poLineCarton').value),box=Number(pc('poLineBox').value);pc('poLineHint').textContent=validQty(carton,box)?`PO calculation: ${carton} per carton / ${box} per box.`:'Enter carton and box quantities here, or load a saved combination.';}
+pc('poLinePreset').addEventListener('change',()=>{const pair=savedQty[pc('poLinePreset').value];if(!pair)return;pc('poLineCarton').value=pair[0];pc('poLineBox').value=pair[1];poLineStatus()});
+for(const id of ['poLineCarton','poLineBox'])pc(id).addEventListener('input',()=>{pc('poLinePreset').value='';poLineStatus()});
 function dimLoad(){const pair=savedQty[pc('pcSize').value];if(!pair)return;pc('dimCarton').value=pair[0];pc('dimBox').value=pair[1];pcCalc();pc('dimStatus').textContent='Saved carton and box quantities loaded.'}
 function pcCalc(){const carton=Math.max(0,Math.floor(Number(pc('dimCarton').value)||0)),box=Math.max(0,Math.floor(Number(pc('dimBox').value)||0));
  const qty=Math.max(0,Math.floor(Number(pc('pcQty').value)||0));const cartons=carton>0?Math.floor(qty/carton):0;
@@ -262,6 +285,40 @@ pc('dimDelete').addEventListener('click',()=>{const key=pc('pcSize').value;if(!k
  delete savedQty[key];writeStore(QTY_KEY,savedQty);dimList();pc('dimStatus').textContent='Saved quantity deleted. Current calculator inputs are unchanged.';
 });
 dimList();pcCalc();
+
+// PO workflow: separate storage from pallet records and saved carton/box presets.
+const PO_KEY='palletCounterPickingPOsV1';
+let poRecords=readStore(PO_KEY),poLines=[],activePO='';
+const poToday=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
+function poWarn(){const date=pc('poDate').value;pc('poDateWarning').textContent=date&&date!==poToday()?'Warning: PO date is not today ('+poToday()+').':'PO date checked against today.'}
+function poInt(id){const v=pc(id).value.trim();if(!/^\d+$/.test(v))return null;const n=Number(v);return Number.isSafeInteger(n)?n:null}
+function poCounts(q,carton,box){const c=Math.floor(q/carton),r=q%carton;return {cartons:c,boxes:Math.floor(r/box),loose:r%box}}
+function poRender(){const list=pc('poLines');list.replaceChildren();let total=0,boxes=0,loose=0,tcgs=0;
+ poLines.forEach((line,i)=>{const c=poCounts(line.qty,line.carton,line.box);total+=c.cartons;boxes+=c.boxes;loose+=c.loose;if(line.newTCG===true)tcgs++;
+ const row=document.createElement('div');row.style.cssText='border-bottom:1px solid #ccc;padding:9px 0';
+ const info=document.createElement('div');info.textContent=`${i+1}. ${line.code}: ${line.qty} items | ${c.cartons} cartons, ${c.boxes} boxes, ${c.loose} loose | ${line.carton}/${line.box} per carton/box${line.newTCG===true?' | NEW TCG: YES':' | NEW TCG: NO'}`;
+ const edit=document.createElement('button');edit.type='button';edit.textContent='Edit';edit.style.marginRight='8px';edit.onclick=()=>{pc('poCode').value=line.code;pc('poQty').value=line.qty;pc('poLineCarton').value=line.carton;pc('poLineBox').value=line.box;pc('poLinePreset').value='';poLineStatus();pc('poNewTCG').value=line.newTCG===true?'yes':'no';poLines.splice(i,1);pcCalc();poRender();pc('poMessage').textContent='Product loaded for editing. Add Product to confirm changes.'};
+ const del=document.createElement('button');del.type='button';del.textContent='Remove';del.onclick=()=>{poLines.splice(i,1);poRender()};row.append(info,edit,del);list.append(row)});
+ pc('poCartonTotal').textContent=total.toLocaleString();pc('poRemainder').textContent=`Boxes and loose pieces to pack: ${boxes} boxes and ${loose} loose pieces across product lines. New TCG products: ${tcgs} line(s).`;
+ pc('poTCGSummary').textContent=`New TCG in this PO: ${tcgs?'Yes ('+tcgs+' product line(s))':'No'}`;
+ const additional=poInt('poAdditional')??0;const packed=total+additional;pc('poFinalTotal').textContent=packed.toLocaleString();pc('poCartonLabel').textContent=`Carton label: ${pc('poOutlet').value.trim()||'[Outlet]'} | ${pc('poLocation').value.trim()||'[Location]'} | ${packed+' cartons'}`;
+}
+pc('poDate').value=poToday();pc('poDate').addEventListener('change',poWarn);poWarn();
+for(const id of ['poOutlet','poLocation','poAdditional'])pc(id).addEventListener('input',poRender);
+pc('poClearLine').onclick=()=>{pc('poCode').value='';pc('poQty').value='';pc('poNewTCG').value='no'};
+pc('poAdd').onclick=()=>{const code=pc('poCode').value.trim(),qty=poInt('poQty'),carton=poInt('poLineCarton'),box=poInt('poLineBox');if(!code||qty===null||qty<1||!validQty(carton,box)){pc('poMessage').textContent='Enter product code, required quantity, and valid carton/box quantities above. Carton qty must be a multiple of box qty.';return}
+ poLines.push({code,qty,carton,box,newTCG:pc('poNewTCG').value==='yes'});pc('poMessage').textContent=`Added ${code}.`;pc('poClearLine').click();poRender()};
+function poKey(){return `${pc('poDate').value}|${pc('poNumber').value.trim().toUpperCase()}`}
+function poData(){return {date:pc('poDate').value,number:pc('poNumber').value.trim(),outlet:pc('poOutlet').value.trim(),location:pc('poLocation').value.trim(),additional:poInt('poAdditional')??0,packed:(poLines.reduce((sum,x)=>sum+poCounts(x.qty,x.carton,x.box).cartons,0)+(poInt('poAdditional')??0)),newTCG:poLines.some(x=>x.newTCG===true),lines:poLines.map(x=>({...x}))}}
+function poSave(){const r=poData();if(!r.date||!r.number||!r.outlet||!r.location||!r.lines.length){pc('poMessage').textContent='Enter date, PO number, outlet, location and at least one product.';return}
+ const key=poKey();if(activePO&&activePO!==key)delete poRecords[activePO];poRecords[key]=r;activePO=key;writeStore(PO_KEY,poRecords);poList();pc('poMessage').textContent='PO saved on this device.'}
+pc('poSave').onclick=poSave;
+function poLoad(key){const r=poRecords[key];if(!r)return;activePO=key;for(const [id,val] of [['poDate',r.date],['poNumber',r.number],['poOutlet',r.outlet],['poLocation',r.location],['poAdditional',r.additional??Math.max(0,(r.packed??0)-(r.lines||[]).reduce((sum,x)=>sum+poCounts(x.qty,x.carton,x.box).cartons,0))]])pc(id).value=val;poLines=(r.lines||[]).map(x=>({...x}));poWarn();poRender();pc('poMessage').textContent='Saved PO loaded. Tap Edit on a product to change its carton/box quantities.'}
+function poList(){const root=pc('poSaved');root.replaceChildren();Object.keys(poRecords).sort().reverse().forEach(key=>{const r=poRecords[key],row=document.createElement('div');row.style.cssText='border-bottom:1px solid #ccc;padding:7px 0';const load=document.createElement('button');load.type='button';load.textContent=`${r.date} | ${r.number} | ${r.outlet} | ${r.location} | New TCG: ${(r.lines||[]).some(x=>x.newTCG===true)?'Yes':'No'}`;load.onclick=()=>poLoad(key);const del=document.createElement('button');del.type='button';del.textContent='Delete';del.style.marginLeft='8px';del.onclick=()=>{if(!confirm('Delete this saved PO?'))return;delete poRecords[key];writeStore(PO_KEY,poRecords);if(activePO===key)activePO='';poList()};row.append(load,del);root.append(row)})}
+pc('poNew').onclick=()=>{activePO='';poLines=[];for(const id of ['poNumber','poOutlet','poLocation','poAdditional','poCode','poQty'])pc(id).value='';pc('poDate').value=poToday();pc('poAdditional').value='0';pc('poNewTCG').value='no';poWarn();poRender();pc('poMessage').textContent='New PO started.'};
+pc('poExport').onclick=()=>{const esc=v=>'"'+String(v??'').replaceAll('"','""')+'"';const rows=[['Date','PO Number','Outlet','Location','New TCG?','Calculated Full Cartons','Additional Cartons','Total Cartons for Labels','Product Lines','New TCG Product Codes']];for(const r of Object.values(poRecords).sort((a,b)=>a.date.localeCompare(b.date))){const calc=(r.lines||[]).reduce((sum,x)=>sum+poCounts(x.qty,x.carton,x.box).cartons,0);const tcgLines=(r.lines||[]).filter(x=>x.newTCG===true);rows.push([r.date,r.number,r.outlet,r.location,tcgLines.length?'Yes':'No',calc,r.additional??Math.max(0,(r.packed??0)-calc),calc+(r.additional??Math.max(0,(r.packed??0)-calc)),(r.lines||[]).map(x=>`${x.code} x${x.qty}`).join('; '),tcgLines.map(x=>x.code).join('; ')])}const csv='\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\r\n');const a=document.createElement('a'),url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.href=url;a.download='daily-job-sheet.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+poList();poRender();poLineStatus();
+
 const priceOriginal=new Map(productCatalog.map(r=>[String(r[0]).trim().toLowerCase(),r]));
 let priceOverrides=readStore(PRICE_KEY);let selectedPrice='';
 function priceRows(){const map=new Map(priceOriginal);for(const [k,v] of Object.entries(priceOverrides))map.set(k,v);return [...map.values()]}

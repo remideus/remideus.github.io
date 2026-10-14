@@ -1,1 +1,5 @@
-Pallet Counter PWA v9. Product Calculator now saves and loads carton qty / box qty presets. Existing v8 custom quantity pairs are migrated. Replace all GitHub Pages files and commit. Data is local to the same browser origin.
+Pallet Counter PWA v13
+Product Calculator: enter Additional Cartons for boxes/loose pieces. Total cartons for labels = calculated full cartons + additional cartons. Saved PO and CSV retain additional cartons. Existing saved POs with a packed carton value are migrated when loaded.
+Upload all files to your existing GitHub Pages repository.
+
+V14: Pallet Counter width/length fields (both incomplete and full pallets) accept decimal values. Calculations preserve fractions rather than flooring dimensions.
