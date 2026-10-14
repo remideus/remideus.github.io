@@ -3,3 +3,5 @@ Product Calculator: enter Additional Cartons for boxes/loose pieces. Total carto
 Upload all files to your existing GitHub Pages repository.
 
 V14: Pallet Counter width/length fields (both incomplete and full pallets) accept decimal values. Calculations preserve fractions rather than flooring dimensions.
+
+Version 15: Multiple backtracked quantity entries with notes, automatic totals, excess/short status, saved record and CSV support.

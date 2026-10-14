@@ -81,11 +81,16 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 
 <section class="card">
 <h2>Stock Reconciliation</h2>
-<p>Compare the physical count with the system quantity. Enter the backtracked quantity as a positive number. It automatically reduces the remaining difference towards zero, whether stock is short or in excess.</p>
-<div class="grid2">
+<p>Compare physical stock with the system amount. Add multiple backtracked quantities with notes to explain where each adjustment came from. Enter positive quantities only; the total reduces the difference towards zero.</p>
 <label>System Amount<input id="systemAmount" type="number" inputmode="numeric" min="0" placeholder="e.g. 2000"></label>
-<label>Backtracked Amount<input id="backtracked" type="number" inputmode="numeric" min="0" step="1" value="0" placeholder="e.g. 100"></label>
+<div class="hint" style="margin-top:12px"><strong>Backtracked Entries</strong></div>
+<div class="grid2">
+<label>Quantity<input id="backtrackQty" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g. 40"></label>
+<label>Note / Source<input id="backtrackNote" type="text" placeholder="e.g. returned stock / outlet"></label>
 </div>
+<div class="actions"><button id="addBacktrack" type="button">Add Backtracked Entry</button><button id="clearBacktrack" type="button">Clear Entries</button></div>
+<div id="backtrackEntries" aria-live="polite"></div>
+<div class="box" style="margin-top:12px"><div>Total Backtracked Amount</div><div class="num" id="backtrackedTotal">0</div></div>
 <div class="results" style="margin-top:12px">
 <div class="box"><div>Initial Difference</div><div class="num" id="initialDifference">—</div><div id="initialStatus" class="hint"></div></div>
 <div class="box"><div>Remaining Difference</div><div class="num" id="remainingDifference">—</div><div id="remainingStatus" class="hint"></div></div>
@@ -134,7 +139,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <label>Search Product<input id="pcSearch" type="search" autocomplete="off" placeholder="Item code, description or barcode"></label><div id="pcMatches" class="lookup" aria-live="polite"></div></section>
 <section class="card"><h2>Edit Price Tag</h2><label>Product Code<input id="priceCode" type="text" autocomplete="off"></label><label>Description<input id="priceName" type="text"></label><label>Retail Price ($)<input id="priceValue" type="number" min="0" step="0.01" inputmode="decimal"></label><label>Barcode<input id="priceBarcode" type="text" inputmode="numeric"></label><div class="actions"><button type="button" id="priceSave">Save Price Tag</button><button type="button" id="priceNew">New Product</button><button type="button" id="priceReset">Restore Original</button></div><div id="priceStatus" class="hint" aria-live="polite"></div></section></div>
 <script>
-const ids=['lw','ll','lh','extra','fp','fw','fl','fh','items','looseQty','looseEach','systemAmount','backtracked'];
+const ids=['lw','ll','lh','extra','fp','fw','fl','fh','items','looseQty','looseEach','systemAmount'];
 const el=id=>document.getElementById(id);
 const num=id=>{const v=Number(el(id).value);return Number.isFinite(v)?v:0};
 const whole=v=>Math.max(0,Math.floor(v));
@@ -150,6 +155,26 @@ function displayDate(key){
  const [y,m,d]=key.split('-').map(Number);
  return new Date(y,m-1,d).toLocaleDateString(undefined,{weekday:'long',day:'2-digit',month:'short',year:'numeric'});
 }
+let backtrackEntries=[];
+function normalizeBacktracks(inputs){
+ if(Array.isArray(inputs?.backtrackEntries))return inputs.backtrackEntries.map(x=>({qty:whole(Number(x.qty)||0),note:String(x.note||'')})).filter(x=>x.qty>0);
+ const old=whole(Number(inputs?.backtracked)||0);
+ return old?[{qty:old,note:'Previously saved backtracked amount'}]:[];
+}
+function backtrackTotalFromInputs(inputs){return normalizeBacktracks(inputs).reduce((sum,x)=>sum+x.qty,0)}
+function getBacktrackedTotal(){return backtrackEntries.reduce((sum,x)=>sum+x.qty,0)}
+function renderBacktrackEntries(){
+ el('backtrackedTotal').textContent=getBacktrackedTotal().toLocaleString();
+ el('backtrackEntries').innerHTML=backtrackEntries.length?backtrackEntries.map((x,i)=>`<div class="record"><div><strong>${x.qty.toLocaleString()}</strong><div class="hint">${esc(x.note||'No note')}</div></div><button type="button" class="removeBacktrack" data-index="${i}" aria-label="Remove entry ${i+1}">Remove</button></div>`).join(''):'<div class="hint">No backtracked entries added.</div>';
+}
+el('addBacktrack').addEventListener('click',()=>{
+ const raw=el('backtrackQty').value.trim(),qty=Number(raw);
+ if(!raw||!Number.isSafeInteger(qty)||qty<=0){el('status').textContent='Enter a positive whole-number backtracked quantity.';return}
+ backtrackEntries.push({qty,note:el('backtrackNote').value.trim()});
+ el('backtrackQty').value='';el('backtrackNote').value='';renderBacktrackEntries();calc();el('status').textContent='Backtracked entry added.';
+});
+el('clearBacktrack').addEventListener('click',()=>{backtrackEntries=[];renderBacktrackEntries();calc()});
+el('backtrackEntries').addEventListener('click',e=>{const btn=e.target.closest('.removeBacktrack');if(!btn)return;backtrackEntries.splice(Number(btn.dataset.index),1);renderBacktrackEntries();calc()});
 function calc(){
  const last=Math.max(0,precise(decimal(num('lw'))*decimal(num('ll'))*whole(num('lh'))+Math.trunc(num('extra'))));
  const full=precise(whole(num('fp'))*decimal(num('fw'))*decimal(num('fl'))*whole(num('fh')));
@@ -159,17 +184,17 @@ function calc(){
  el('total').textContent=total.toLocaleString();
  const hasSystem=el('systemAmount').value.trim()!=='';
  const system=whole(num('systemAmount'));
- const backtracked=whole(num('backtracked'));
+ const backtracked=getBacktrackedTotal();
  const initial=total-system;
  const remaining=initial===0?0:Math.sign(initial)*Math.max(0,Math.abs(initial)-backtracked);
  const fmt=v=>(v>0?'+':'')+v.toLocaleString();
  const status=v=>v===0?'Matched':v>0?'Excess':'Short';
  el('initialDifference').textContent=hasSystem?fmt(initial):'—';
- el('remainingDifference').textContent=hasSystem?fmt(remaining):'—';
+ el('remainingDifference').textContent=hasSystem?`${fmt(remaining)} ${status(remaining)}`:'—';
  el('initialStatus').textContent=hasSystem?status(initial):'Enter system amount';
  el('remainingStatus').textContent=hasSystem?status(remaining):'Enter system amount';
  el('breakdown').textContent=`${boxes.toLocaleString()} full boxes × ${per.toLocaleString()} items/box + ${looseQty.toLocaleString()} × ${looseEach.toLocaleString()} = ${loose.toLocaleString()} partial/loose items`;
- return {last,full,boxes,per,loose,total,systemAmount:el('systemAmount').value.trim()===''?null:whole(num('systemAmount')),backtracked:whole(num('backtracked'))};
+ return {last,full,boxes,per,loose,total,systemAmount:el('systemAmount').value.trim()===''?null:whole(num('systemAmount')),backtracked,backtrackEntries:backtrackEntries.map(x=>({...x}))};
 }
 function getRecords(){
  try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){return[]}
@@ -183,7 +208,7 @@ function renderHistory(){
  r.forEach(x=>(groups[x.date]??=[]).push(x));
  host.innerHTML=Object.keys(groups).sort().map(date=>`
   <div class="day"><h3>${esc(displayDate(date))}</h3>
-  ${groups[date].map(x=>{const idx=r.indexOf(x);return `<div class="record"><div><button type="button" class="code loadRecord" data-index="${idx}">${esc(x.code)}</button></div><div class="recordRight"><div class="amount">${Number(x.amount).toLocaleString()}${x.inputs?.systemAmount!==undefined&&String(x.inputs.systemAmount).trim()!==''?`<div style="font-size:12px;font-weight:400">Diff: ${(Math.sign(Number(x.amount)-Number(x.inputs.systemAmount))*Math.max(0,Math.abs(Number(x.amount)-Number(x.inputs.systemAmount))-(Number(x.inputs.backtracked)||0))).toLocaleString()}</div>`:''}</div><button type="button" class="deleteRecord" data-index="${idx}" aria-label="Delete ${esc(x.code)}">−</button></div></div>`}).join('')}
+  ${groups[date].map(x=>{const idx=r.indexOf(x);return `<div class="record"><div><button type="button" class="code loadRecord" data-index="${idx}">${esc(x.code)}</button></div><div class="recordRight"><div class="amount">${Number(x.amount).toLocaleString()}${x.inputs?.systemAmount!==undefined&&String(x.inputs.systemAmount).trim()!==''?`<div style="font-size:12px;font-weight:400">Diff: ${(Math.sign(Number(x.amount)-Number(x.inputs.systemAmount))*Math.max(0,Math.abs(Number(x.amount)-Number(x.inputs.systemAmount))-backtrackTotalFromInputs(x.inputs))).toLocaleString()}</div>`:''}</div><button type="button" class="deleteRecord" data-index="${idx}" aria-label="Delete ${esc(x.code)}">−</button></div></div>`}).join('')}
   </div>`).join('');
 }
 el('history').addEventListener('click',e=>{
@@ -195,7 +220,7 @@ el('history').addEventListener('click',e=>{
   if(!rec.inputs){el('status').textContent='Older record has no saved inputs. Recalculate and save it once.';return}
   el('product').value=rec.code;
   ids.forEach(id=>el(id).value=rec.inputs[id]??'');
-  calc(); window.scrollTo({top:0,behavior:'smooth'});
+  backtrackEntries=normalizeBacktracks(rec.inputs);renderBacktrackEntries();calc(); window.scrollTo({top:0,behavior:'smooth'});
   el('status').textContent=`Loaded ${rec.code}. Change values and SAVE COUNT to overwrite.`;
   return;
  }
@@ -207,8 +232,8 @@ el('history').addEventListener('click',e=>{
  el('status').textContent=`Deleted ${removed.code}.`;
 });
 function resetInputs(){
- document.querySelectorAll('input').forEach(x=>x.value='');
- el('fp').value='0';el('extra').value='0';el('backtracked').value='0';calc();el('product').focus();
+ document.querySelectorAll('#palletPage input').forEach(x=>x.value='');
+ el('fp').value='0';el('extra').value='0';backtrackEntries=[];renderBacktrackEntries();calc();el('product').focus();
 }
 ids.forEach(id=>el(id).addEventListener('input',calc));
 el('save').addEventListener('click',()=>{
@@ -217,7 +242,7 @@ el('save').addEventListener('click',()=>{
  if(c.total<=0){el('status').textContent='Total items must be more than 0.';return}
  const now=new Date(), today=dateKey(now), r=getRecords();
  const existing=r.findIndex(x=>x.date===today && String(x.code).toLowerCase()===code.toLowerCase());
- const record={date:today,code,amount:c.total,inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value,looseQty:el('looseQty').value,looseEach:el('looseEach').value,systemAmount:el('systemAmount').value,backtracked:el('backtracked').value}};
+ const record={date:today,code,amount:c.total,inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value,looseQty:el('looseQty').value,looseEach:el('looseEach').value,systemAmount:el('systemAmount').value,backtracked:c.backtracked,backtrackEntries:c.backtrackEntries}};
  if(existing>=0) r[existing]=record; else r.push(record);
  putRecords(r);renderHistory();
  el('status').textContent=`Saved ${code}: ${c.total.toLocaleString()} items. Same code today will be overwritten.`;
@@ -226,13 +251,13 @@ el('save').addEventListener('click',()=>{
 el('clear').addEventListener('click',()=>{resetInputs();el('status').textContent='Calculator cleared.'});
 el('export').addEventListener('click',()=>{
  const r=getRecords(); if(!r.length){el('status').textContent='There are no records to export.';return}
- const rows=[['Date','Product Code','Physical Count','System Amount','Backtracked Amount','Initial Difference','Remaining Difference'],...r.map(x=>{const raw=x.inputs?.systemAmount;const has=raw!==undefined&&raw!==null&&String(raw).trim()!=='';const system=has?Math.max(0,Math.floor(Number(raw)||0)):null;const back=Math.max(0,Math.trunc(Number(x.inputs?.backtracked)||0));const initial=Number(x.amount)-system;const remaining=Math.sign(initial)*Math.max(0,Math.abs(initial)-back);return [x.date,x.code,x.amount,has?system:'',has?back:'',has?initial:'',has?remaining:'']})];
+ const rows=[['Date','Product Code','Physical Count','System Amount','Backtracked Total','Backtracked Entries (Qty: Note)','Initial Difference','Initial Status','Remaining Difference','Remaining Status'],...r.map(x=>{const raw=x.inputs?.systemAmount;const has=raw!==undefined&&raw!==null&&String(raw).trim()!=='';const system=has?Math.max(0,Math.floor(Number(raw)||0)):null;const entries=normalizeBacktracks(x.inputs);const back=backtrackTotalFromInputs(x.inputs);const initial=has?Number(x.amount)-system:null;const remaining=has?Math.sign(initial)*Math.max(0,Math.abs(initial)-back):null;const status=v=>v===0?'Matched':v>0?'Excess':'Short';return [x.date,x.code,x.amount,has?system:'',back,entries.map(e=>`${e.qty}: ${e.note}`).join(' | '),has?initial:'',has?status(initial):'',has?remaining:'',has?status(remaining):'']})];
  const csv=rows.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
  a.href=url;a.download='pallet-inventory-records.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 el('today').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
-calc();renderHistory();
+renderBacktrackEntries();calc();renderHistory();
 
 // Workbook-backed product calculator; independent of pallet-count storage.
 const productSizes=[["288&24", 288, 24], ["144&12", 144, 12], ["240&24", 240, 24], ["96&12", 96, 12], ["200&10", 200, 10], ["100&10", 100, 10], ["6&1", 6, 1], ["10&1", 10, 1], ["40&10", 40, 10], ["12&12", 12, 12], ["48&6", 48, 6], ["96&24", 96, 24], ["288&36", 288, 36], ["216&36", 216, 36], ["432&18", 432, 18], ["108&9", 108, 9], ["48&4", 48, 4], ["72&8", 72, 8], ["20&5", 20, 5], ["144&1", 144, 1], ["144&24", 144, 24], ["216&18", 216, 18], ["54&9", 54, 9], ["192&16", 192, 16], ["216&12", 216, 12]];
