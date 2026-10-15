@@ -39,6 +39,14 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 
 <nav class="tabs" aria-label="Calculator pages"><button id="tabPallet" type="button" aria-selected="true">Pallet Counter</button><button id="tabProduct" type="button" aria-selected="false">Product Calculator</button><button id="tabPrice" type="button" aria-selected="false">Price Tags</button></nav>
 <div id="palletPage" class="page">
+<section class="card" style="margin-top:0">
+<h2>Counting Location</h2>
+<div class="grid2" role="group" aria-label="Pallet counter location">
+<button id="locWarehouse" type="button" aria-pressed="true">Warehouse</button>
+<button id="locOffice" type="button" aria-pressed="false">Office</button>
+</div>
+<p id="locationHint" style="margin:10px 0 0">Warehouse counts and saved inventory.</p>
+</section>
 <label>Product Code<input id="product" type="text" autocomplete="off" placeholder="e.g. OP-15"></label>
 
 <section class="card">
@@ -77,11 +85,21 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <div class="box"><div>Last pallet boxes</div><div class="num" id="lastBoxes">0</div></div>
 <div class="box"><div>Full pallet boxes</div><div class="num" id="fullBoxes">0</div></div>
 </div>
-<div class="total"><div>TOTAL ITEMS</div><div class="num" id="total">0</div><div id="breakdown">0 total boxes</div></div>
+<div class="total"><div>LOCATION ITEMS</div><div class="num" id="total">0</div><div id="breakdown">0 total boxes</div></div>
 
+<section class="card" id="combinedStock" aria-live="polite">
+<h2>Overall Stock (Office + Warehouse)</h2>
+<p>Both locations are counted separately, then added together for the same product. System stock is compared against their combined total.</p>
+<div class="results">
+<div class="box"><div>Warehouse Items</div><div class="num" id="warehouseTotal">0</div></div>
+<div class="box"><div>Office Items</div><div class="num" id="officeTotal">0</div></div>
+</div>
+<div class="total"><div>COMBINED PHYSICAL COUNT</div><div class="num" id="combinedTotal">0</div></div>
+<div class="hint" id="combinedHint"></div>
+</section>
 <section class="card">
 <h2>Stock Reconciliation</h2>
-<p>Compare physical stock with the system amount. Add multiple backtracked quantities with notes to explain where each adjustment came from. Enter positive quantities only; the total adjusts the difference and can pass zero.</p>
+<p>Compare the combined Office + Warehouse physical stock with the system amount. Add multiple backtracked quantities with notes to explain where each adjustment came from. Enter positive quantities only; the total adjusts the difference and can pass zero.</p>
 <label>System Amount<input id="systemAmount" type="number" inputmode="numeric" min="0" placeholder="e.g. 2000"></label>
 <div class="hint" style="margin-top:12px"><strong>Backtracked Entries</strong></div>
 <div class="grid2">
@@ -90,7 +108,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 </div>
 <div class="actions"><button id="addBacktrack" type="button">Add Backtracked Entry</button><button id="clearBacktrack" type="button">Clear Entries</button></div>
 <div id="backtrackEntries" aria-live="polite"></div>
-<div class="box" style="margin-top:12px"><div>Total Backtracked Amount</div><div class="num" id="backtrackedTotal">0</div></div>
+<div class="box" style="margin-top:12px"><div>Combined Backtracked Amount (Office + Warehouse)</div><div class="num" id="backtrackedTotal">0</div></div>
 <div class="results" style="margin-top:12px">
 <div class="box"><div>Initial Difference</div><div class="num" id="initialDifference">—</div><div id="initialStatus" class="hint"></div></div>
 <div class="box"><div>Remaining Difference</div><div class="num" id="remainingDifference">—</div><div id="remainingStatus" class="hint"></div></div>
@@ -102,7 +120,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 
 <section class="card">
 <div class="historyHead"><h2>Saved Inventory</h2><button id="export" type="button">Export CSV</button></div>
-<p>Records are grouped by date. Tap a product code to load its saved calculator inputs.</p>
+<p>Records are separated by Office and Warehouse, but the overall stock calculation adds both locations. Tap a product code to load its saved calculator inputs.</p>
 <div id="history"></div>
 </section>
 </main>
@@ -146,6 +164,41 @@ const whole=v=>Math.max(0,Math.floor(v));
 const decimal=v=>Math.max(0,Number(v)||0);
 const precise=v=>Math.round((v+Number.EPSILON)*1000000)/1000000;
 const KEY='palletCounterRecordsV1';
+// Legacy records belong to Warehouse. Keep the original storage key for safe upgrades.
+let activeLocation='warehouse';
+const locationOf=r=>r.location==='office'?'office':'warehouse';
+const drafts={warehouse:null,office:null};
+function snapshotDraft(){return {product:el('product').value,inputs:Object.fromEntries(ids.map(id=>[id,el(id).value])),backtracks:backtrackEntries.map(x=>({...x}))}}
+function restoreDraft(d){
+ el('product').value=d?.product||'';
+ ids.forEach(id=>el(id).value=d?.inputs?.[id]??'');
+ if(!d){el('fp').value='0';el('extra').value='0'}
+ backtrackEntries=d?.backtracks?.map(x=>({...x}))||[];
+ el('backtrackQty').value='';el('backtrackNote').value='';
+ renderBacktrackEntries();calc();
+}
+function switchLocation(next){
+ if(next===activeLocation)return;
+ const oldProduct=el('product').value.trim();
+ const oldSystem=el('systemAmount').value.trim();
+ drafts[activeLocation]=snapshotDraft();activeLocation=next;
+ restoreDraft(drafts[next]);
+ if(oldProduct && !el('product').value.trim())el('product').value=oldProduct;
+ if(oldSystem && !el('systemAmount').value.trim())el('systemAmount').value=oldSystem;
+ calc();
+ for(const loc of ['warehouse','office']){
+  const btn=el(loc==='warehouse'?'locWarehouse':'locOffice');
+  btn.setAttribute('aria-pressed',String(loc===activeLocation));
+  btn.style.background=loc===activeLocation?'#111':'#fff';
+  btn.style.color=loc===activeLocation?'#fff':'#111';
+ }
+ el('locationHint').textContent=`${activeLocation==='office'?'Office':'Warehouse'} counts and saved inventory.`;
+ el('status').textContent=`Switched to ${activeLocation==='office'?'Office':'Warehouse'} Pallet Counter.`;
+ renderHistory();
+}
+el('locWarehouse').addEventListener('click',()=>switchLocation('warehouse'));
+el('locOffice').addEventListener('click',()=>switchLocation('office'));
+el('locWarehouse').style.background='#111';el('locWarehouse').style.color='#fff';
 
 function dateKey(d=new Date()){
  const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');
@@ -175,6 +228,23 @@ el('addBacktrack').addEventListener('click',()=>{
 });
 el('clearBacktrack').addEventListener('click',()=>{backtrackEntries=[];renderBacktrackEntries();calc()});
 el('backtrackEntries').addEventListener('click',e=>{const btn=e.target.closest('.removeBacktrack');if(!btn)return;backtrackEntries.splice(Number(btn.dataset.index),1);renderBacktrackEntries();calc()});
+function physicalFromInputs(i){
+ if(!i)return 0;
+ const n=k=>Number(i[k])||0, w=v=>Math.max(0,Math.floor(v)),d=v=>Math.max(0,v);
+ const last=Math.max(0,precise(d(n('lw'))*d(n('ll'))*w(n('lh'))+Math.trunc(n('extra'))));
+ const full=precise(w(n('fp'))*d(n('fw'))*d(n('fl'))*w(n('fh')));
+ return precise((last+full)*w(n('items'))+w(n('looseQty'))*w(n('looseEach')));
+}
+function matchingOtherData(code){
+ const other=activeLocation==='warehouse'?'office':'warehouse';
+ const draft=drafts[other];
+ if(draft?.product?.trim() && draft.product.trim().toLowerCase()===code.toLowerCase()){
+  return {total:physicalFromInputs(draft.inputs),back: draft.backtracks.reduce((a,x)=>a+x.qty,0),system:draft.inputs.systemAmount,source:'unsaved '+other+' count'};
+ }
+ const rec=getRecords().filter(x=>locationOf(x)===other && String(x.code).trim().toLowerCase()===code.toLowerCase()).sort((a,b)=>b.date.localeCompare(a.date))[0];
+ if(rec)return {total:Number(rec.amount)||0,back:backtrackTotalFromInputs(rec.inputs),system:rec.inputs?.systemAmount,source:'saved '+other+' count ('+rec.date+')'};
+ return {total:0,back:0,system:'',source:'no '+other+' count yet'};
+}
 function calc(){
  const last=Math.max(0,precise(decimal(num('lw'))*decimal(num('ll'))*whole(num('lh'))+Math.trunc(num('extra'))));
  const full=precise(whole(num('fp'))*decimal(num('fw'))*decimal(num('fl'))*whole(num('fh')));
@@ -182,11 +252,23 @@ function calc(){
  el('lastBoxes').textContent=last.toLocaleString();
  el('fullBoxes').textContent=full.toLocaleString();
  el('total').textContent=total.toLocaleString();
- const hasSystem=el('systemAmount').value.trim()!=='';
- const system=whole(num('systemAmount'));
+ const code=el('product').value.trim();
+ const other=code?matchingOtherData(code):{total:0,back:0,system:'',source:'enter product code to combine locations'};
+ const warehouse=activeLocation==='warehouse'?total:other.total;
+ const office=activeLocation==='office'?total:other.total;
+ const combined=precise(warehouse+office);
+ el('warehouseTotal').textContent=warehouse.toLocaleString();
+ el('officeTotal').textContent=office.toLocaleString();
+ el('combinedTotal').textContent=combined.toLocaleString();
+ el('combinedHint').textContent=code?'Other location: '+other.source+'. Only counts for product '+code+' are combined.':'Enter a product code to find the other location count.';
+ const systemRaw=el('systemAmount').value.trim() || String(other.system??'').trim();
+ const hasSystem=systemRaw!=='';
+ const system=whole(Number(systemRaw)||0);
  const backtracked=getBacktrackedTotal();
- const initial=total-system;
- const remaining=precise(initial<0?initial+backtracked:initial>0?initial-backtracked:backtracked);
+ const combinedBacktracked=backtracked+other.back;
+ el('backtrackedTotal').textContent=combinedBacktracked.toLocaleString();
+ const initial=precise(combined-system);
+ const remaining=precise(initial<0?initial+combinedBacktracked:initial>0?initial-combinedBacktracked:combinedBacktracked);
  const fmt=v=>(v>0?'+':'')+v.toLocaleString();
  const status=v=>v===0?'Matched':v>0?'Excess':'Short';
  el('initialDifference').textContent=hasSystem?fmt(initial):'—';
@@ -203,12 +285,13 @@ function putRecords(r){localStorage.setItem(KEY,JSON.stringify(r))}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function renderHistory(){
  const r=getRecords(), host=el('history');
- if(!r.length){host.innerHTML='<div class="empty">No saved counts yet.</div>';return}
+ const visible=r.filter(x=>locationOf(x)===activeLocation);
+ if(!visible.length){host.innerHTML='<div class="empty">No saved counts for this location yet.</div>';return}
  const groups={};
- r.forEach(x=>(groups[x.date]??=[]).push(x));
+ visible.forEach(x=>(groups[x.date]??=[]).push(x));
  host.innerHTML=Object.keys(groups).sort().map(date=>`
   <div class="day"><h3>${esc(displayDate(date))}</h3>
-  ${groups[date].map(x=>{const idx=r.indexOf(x);return `<div class="record"><div><button type="button" class="code loadRecord" data-index="${idx}">${esc(x.code)}</button></div><div class="recordRight"><div class="amount">${Number(x.amount).toLocaleString()}${x.inputs?.systemAmount!==undefined&&String(x.inputs.systemAmount).trim()!==''?`<div style="font-size:12px;font-weight:400">Diff: ${((Number(x.amount)-Number(x.inputs.systemAmount))<0?(Number(x.amount)-Number(x.inputs.systemAmount))+backtrackTotalFromInputs(x.inputs):(Number(x.amount)-Number(x.inputs.systemAmount))>0?(Number(x.amount)-Number(x.inputs.systemAmount))-backtrackTotalFromInputs(x.inputs):backtrackTotalFromInputs(x.inputs)).toLocaleString()}</div>`:''}</div><button type="button" class="deleteRecord" data-index="${idx}" aria-label="Delete ${esc(x.code)}">−</button></div></div>`}).join('')}
+  ${groups[date].map(x=>{const idx=r.indexOf(x);return `<div class="record"><div><button type="button" class="code loadRecord" data-index="${idx}">${esc(x.code)}</button></div><div class="recordRight"><div class="amount">${Number(x.amount).toLocaleString()}${x.inputs?.systemAmount!==undefined&&String(x.inputs.systemAmount).trim()!==''?`<div style="font-size:12px;font-weight:400">Location diff: ${((Number(x.amount)-Number(x.inputs.systemAmount))<0?(Number(x.amount)-Number(x.inputs.systemAmount))+backtrackTotalFromInputs(x.inputs):(Number(x.amount)-Number(x.inputs.systemAmount))>0?(Number(x.amount)-Number(x.inputs.systemAmount))-backtrackTotalFromInputs(x.inputs):backtrackTotalFromInputs(x.inputs)).toLocaleString()}</div>`:''}</div><button type="button" class="deleteRecord" data-index="${idx}" aria-label="Delete ${esc(x.code)}">−</button></div></div>`}).join('')}
   </div>`).join('');
 }
 el('history').addEventListener('click',e=>{
@@ -236,25 +319,26 @@ function resetInputs(){
  el('fp').value='0';el('extra').value='0';backtrackEntries=[];renderBacktrackEntries();calc();el('product').focus();
 }
 ids.forEach(id=>el(id).addEventListener('input',calc));
+el('product').addEventListener('input',calc);
 el('save').addEventListener('click',()=>{
  const code=el('product').value.trim(), c=calc();
  if(!code){el('status').textContent='Enter a product code before saving.';el('product').focus();return}
  if(c.total<=0){el('status').textContent='Total items must be more than 0.';return}
  const now=new Date(), today=dateKey(now), r=getRecords();
- const existing=r.findIndex(x=>x.date===today && String(x.code).toLowerCase()===code.toLowerCase());
- const record={date:today,code,amount:c.total,inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value,looseQty:el('looseQty').value,looseEach:el('looseEach').value,systemAmount:el('systemAmount').value,backtracked:c.backtracked,backtrackEntries:c.backtrackEntries}};
+ const existing=r.findIndex(x=>locationOf(x)===activeLocation && x.date===today && String(x.code).toLowerCase()===code.toLowerCase());
+ const record={location:activeLocation,date:today,code,amount:c.total,inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value,looseQty:el('looseQty').value,looseEach:el('looseEach').value,systemAmount:el('systemAmount').value,backtracked:c.backtracked,backtrackEntries:c.backtrackEntries}};
  if(existing>=0) r[existing]=record; else r.push(record);
  putRecords(r);renderHistory();
- el('status').textContent=`Saved ${code}: ${c.total.toLocaleString()} items. Same code today will be overwritten.`;
+ el('status').textContent=`Saved ${code}: ${c.total.toLocaleString()} items. Same code today in this location will be overwritten. Overall total adds both locations.`;
  resetInputs();
 });
 el('clear').addEventListener('click',()=>{resetInputs();el('status').textContent='Calculator cleared.'});
 el('export').addEventListener('click',()=>{
- const r=getRecords(); if(!r.length){el('status').textContent='There are no records to export.';return}
+ const r=getRecords().filter(x=>locationOf(x)===activeLocation); if(!r.length){el('status').textContent='There are no records to export for this location.';return}
  const rows=[['Date','Product Code','Physical Count','System Amount','Backtracked Total','Backtracked Entries (Qty: Note)','Initial Difference','Initial Status','Remaining Difference','Remaining Status'],...r.map(x=>{const raw=x.inputs?.systemAmount;const has=raw!==undefined&&raw!==null&&String(raw).trim()!=='';const system=has?Math.max(0,Math.floor(Number(raw)||0)):null;const entries=normalizeBacktracks(x.inputs);const back=backtrackTotalFromInputs(x.inputs);const initial=has?Number(x.amount)-system:null;const remaining=has?(initial<0?initial+back:initial>0?initial-back:back):null;const status=v=>v===0?'Matched':v>0?'Excess':'Short';return [x.date,x.code,x.amount,has?system:'',back,entries.map(e=>`${e.qty}: ${e.note}`).join(' | '),has?initial:'',has?status(initial):'',has?remaining:'',has?status(remaining):'']})];
  const csv=rows.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
- a.href=url;a.download='pallet-inventory-records.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ a.href=url;a.download=`pallet-${activeLocation}-inventory-records.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 el('today').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
 renderBacktrackEntries();calc();renderHistory();
