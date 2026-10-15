@@ -1,7 +1,9 @@
-Pallet Counter PWA v17
+Pallet Counter PWA v13
+Product Calculator: enter Additional Cartons for boxes/loose pieces. Total cartons for labels = calculated full cartons + additional cartons. Saved PO and CSV retain additional cartons. Existing saved POs with a packed carton value are migrated when loaded.
+Upload all files to your existing GitHub Pages repository.
 
-Office and Warehouse pallet counters have separate input drafts, saved inventory lists, and CSV exports. Switch location with the buttons at the top of Pallet Counter. Existing saved counts from older versions are treated as Warehouse counts. Other pages remain unchanged.
+V14: Pallet Counter width/length fields (both incomplete and full pallets) accept decimal values. Calculations preserve fractions rather than flooring dimensions.
 
-To update GitHub Pages: replace the repository files and commit. Open the hosted app online to refresh. Export a backup before updating. Data is stored locally on each device/browser.
+Version 15: Multiple backtracked quantity entries with notes, automatic totals, excess/short status, saved record and CSV support.
 
-V18: Overall physical stock adds Warehouse + Office counts for matching product code. Reconciliation compares combined stock with system and includes both locations backtracked entries.
+Version 16: Backtracked entries can now move the remaining difference past zero, showing Excess or Short rather than capping at Matched.
