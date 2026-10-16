@@ -7,3 +7,7 @@ To update GitHub Pages: replace the repository files and commit. Open the hosted
 V18: Overall physical stock adds Warehouse + Office counts for matching product code. Reconciliation compares combined stock with system and includes both locations backtracked entries.
 
 V19: Saved Inventory groups warehouse and office counts into one product/date entry. Tap entry to load both location inputs; combined CSV export. Existing local records preserved.
+
+V20: Switching Office/Warehouse clears the calculator instead of restoring an earlier product. Saved Inventory remains combined and can be loaded explicitly by tapping a saved product.
+
+V21: Saving clears the product and all inputs. Office/Warehouse toggle always starts blank and does not reopen a saved product. Other-location count only auto-matches the same product on the current date, preventing old counts from previous days from appearing. Tap Saved Inventory to load deliberately.
