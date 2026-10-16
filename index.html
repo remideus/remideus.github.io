@@ -179,12 +179,13 @@ function restoreDraft(d){
 }
 function switchLocation(next){
  if(next===activeLocation)return;
- // Changing location starts a fresh entry; never restore the previous product
- // or copy the other location's code, system amount, or backtracking notes.
- activeLocation=next;
- drafts.warehouse=null;
- drafts.office=null;
- restoreDraft(null);
+ const oldProduct=el('product').value.trim();
+ const oldSystem=el('systemAmount').value.trim();
+ drafts[activeLocation]=snapshotDraft();activeLocation=next;
+ restoreDraft(drafts[next]);
+ if(oldProduct && !el('product').value.trim())el('product').value=oldProduct;
+ if(oldSystem && !el('systemAmount').value.trim())el('systemAmount').value=oldSystem;
+ calc();
  for(const loc of ['warehouse','office']){
   const btn=el(loc==='warehouse'?'locWarehouse':'locOffice');
   btn.setAttribute('aria-pressed',String(loc===activeLocation));
@@ -192,7 +193,7 @@ function switchLocation(next){
   btn.style.color=loc===activeLocation?'#fff':'#111';
  }
  el('locationHint').textContent=`${activeLocation==='office'?'Office':'Warehouse'} counts and saved inventory.`;
- el('status').textContent=`Switched to ${activeLocation==='office'?'Office':'Warehouse'}. Ready for a new product. Tap a Saved Inventory product to load an existing count.`;
+ el('status').textContent=`Switched to ${activeLocation==='office'?'Office':'Warehouse'} Pallet Counter.`;
  renderHistory();
 }
 el('locWarehouse').addEventListener('click',()=>switchLocation('warehouse'));
