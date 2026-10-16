@@ -371,7 +371,8 @@ el('product').addEventListener('input',calc);
 el('save').addEventListener('click',()=>{
  const code=el('product').value.trim(), c=calc();
  if(!code){el('status').textContent='Enter a product code before saving.';el('product').focus();return}
- if(c.total<=0){el('status').textContent='Total items must be more than 0.';return}
+ // A confirmed zero count is valid inventory and must be saved like any other count.
+ if(!Number.isFinite(c.total)||c.total<0){el('status').textContent='Total items must be a valid non-negative number.';return}
  const now=new Date(), today=dateKey(now), r=getRecords();
  const existing=r.findIndex(x=>locationOf(x)===activeLocation && x.date===today && String(x.code).toLowerCase()===code.toLowerCase());
  const record={location:activeLocation,date:today,code,amount:c.total,updatedAt:Date.now(),inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value,looseQty:el('looseQty').value,looseEach:el('looseEach').value,systemAmount:el('systemAmount').value,backtracked:c.backtracked,backtrackEntries:c.backtrackEntries}};
