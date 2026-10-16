@@ -26,6 +26,11 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 .historyHead button{min-height:40px;font-size:14px;padding:6px 10px}
 .day{border-top:2px solid #555;padding-top:10px;margin-top:14px}.day h3{margin:0 0 7px;font-size:17px}
 .record{display:grid;grid-template-columns:1fr auto;gap:12px;padding:10px 2px;border-top:1px solid #ddd;align-items:center}.record:first-of-type{border-top:0}
+.record.yesterday-updated{background:#e8f6eb;border-left:5px solid #20854a;padding-left:9px;border-radius:7px}
+.record.yesterday-pending{background:#fff2d7;border-left:5px solid #b97800;padding-left:9px;border-radius:7px}
+.update-indicator{display:inline-block;margin:4px 0;font-size:12px;font-weight:700}
+.yesterday-updated .update-indicator{color:#146b36}
+.yesterday-pending .update-indicator{color:#865600}
 .code{font-weight:700}.loadRecord{width:auto;min-height:44px;margin:0;padding:4px 8px;border:1px solid #aaa;border-radius:9px;background:#fff;color:#111;text-align:left;font-size:16px}.amount{font-size:18px;font-weight:750}.time{font-size:12px;color:#666}
 .recordRight{display:flex;align-items:center;gap:10px}.deleteRecord{width:44px;min-width:44px;min-height:44px;margin:0;padding:0;border:1px solid #999;border-radius:10px;background:#fff;color:#111;font-size:25px;line-height:1;font-weight:700}
 .tabs{display:flex;gap:8px;margin:12px 0}.tabs button{flex:1;min-height:46px;font-size:15px}.tabs button[aria-selected="true"]{background:#111;color:#fff}.page[hidden]{display:none!important}select{width:100%;min-height:48px;margin-top:5px;padding:10px;border:1px solid #999;border-radius:10px;font-size:17px;background:white}.lookup{font-size:14px;line-height:1.6;margin:10px 0;overflow-wrap:anywhere}.empty{color:#666;font-size:14px;padding:8px 0}
@@ -45,7 +50,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <button id="locWarehouse" type="button" aria-pressed="true">Warehouse</button>
 <button id="locOffice" type="button" aria-pressed="false">Office</button>
 </div>
-<p id="locationHint" style="margin:10px 0 0">Warehouse counts and saved inventory.</p>
+<p id="locationHint" style="margin:10px 0 0">Warehouse count · combined saved inventory.</p>
 </section>
 <label>Product Code<input id="product" type="text" autocomplete="off" placeholder="e.g. OP-15"></label>
 
@@ -120,7 +125,9 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 
 <section class="card">
 <div class="historyHead"><h2>Saved Inventory</h2><button id="export" type="button">Export CSV</button></div>
-<p>Records are separated by Office and Warehouse, but the overall stock calculation adds both locations. Tap a product code to load its saved calculator inputs.</p>
+<div class="actions"><button id="backupData" type="button">Export Data Backup (JSON)</button><button id="importData" type="button">Import Data Backup</button><input id="importDataFile" type="file" accept=".json,application/json" hidden></div>
+<p class="hint">Yesterday's products: <strong style="color:#146b36">Green = counted again today</strong>; <strong style="color:#865600">Amber = not counted today</strong>. A product is updated when both yesterday's counted locations have today's counts.</p>
+<p>One saved inventory entry per date and product combines Warehouse + Office. Tap a product to load its counts. Switch locations to view or edit either side; Save Count stores the active location.</p>
 <div id="history"></div>
 </section>
 </main>
@@ -168,6 +175,12 @@ const KEY='palletCounterRecordsV1';
 let activeLocation='warehouse';
 const locationOf=r=>r.location==='office'?'office':'warehouse';
 const drafts={warehouse:null,office:null};
+let editingSavedProduct=false;
+function discardPreviousProduct(){
+ drafts.warehouse=null; drafts.office=null;
+ editingSavedProduct=false;
+ restoreDraft(null);
+}
 function snapshotDraft(){return {product:el('product').value,inputs:Object.fromEntries(ids.map(id=>[id,el(id).value])),backtracks:backtrackEntries.map(x=>({...x}))}}
 function restoreDraft(d){
  el('product').value=d?.product||'';
@@ -179,13 +192,12 @@ function restoreDraft(d){
 }
 function switchLocation(next){
  if(next===activeLocation)return;
- const oldProduct=el('product').value.trim();
- const oldSystem=el('systemAmount').value.trim();
- drafts[activeLocation]=snapshotDraft();activeLocation=next;
- restoreDraft(drafts[next]);
- if(oldProduct && !el('product').value.trim())el('product').value=oldProduct;
- if(oldSystem && !el('systemAmount').value.trim())el('systemAmount').value=oldSystem;
- calc();
+ // Only an explicitly opened Saved Inventory record may be switched between
+ // locations with its inputs intact. Normal new-product switches remain blank.
+ if(editingSavedProduct)drafts[activeLocation]=snapshotDraft();
+ activeLocation=next;
+ if(editingSavedProduct)restoreDraft(drafts[next]);
+ else discardPreviousProduct();
  for(const loc of ['warehouse','office']){
   const btn=el(loc==='warehouse'?'locWarehouse':'locOffice');
   btn.setAttribute('aria-pressed',String(loc===activeLocation));
@@ -193,7 +205,7 @@ function switchLocation(next){
   btn.style.color=loc===activeLocation?'#fff':'#111';
  }
  el('locationHint').textContent=`${activeLocation==='office'?'Office':'Warehouse'} counts and saved inventory.`;
- el('status').textContent=`Switched to ${activeLocation==='office'?'Office':'Warehouse'} Pallet Counter.`;
+ el('status').textContent=editingSavedProduct?`Viewing saved product in ${activeLocation==='office'?'Office':'Warehouse'}. Save Count to store changes.`:`Switched to ${activeLocation==='office'?'Office':'Warehouse'}. Ready for a new product. Tap Saved Inventory to load an existing count.`;
  renderHistory();
 }
 el('locWarehouse').addEventListener('click',()=>switchLocation('warehouse'));
@@ -241,7 +253,7 @@ function matchingOtherData(code){
  if(draft?.product?.trim() && draft.product.trim().toLowerCase()===code.toLowerCase()){
   return {total:physicalFromInputs(draft.inputs),back: draft.backtracks.reduce((a,x)=>a+x.qty,0),system:draft.inputs.systemAmount,source:'unsaved '+other+' count'};
  }
- const rec=getRecords().filter(x=>locationOf(x)===other && String(x.code).trim().toLowerCase()===code.toLowerCase()).sort((a,b)=>b.date.localeCompare(a.date))[0];
+ const rec=getRecords().find(x=>locationOf(x)===other && x.date===dateKey() && String(x.code).trim().toLowerCase()===code.toLowerCase());
  if(rec)return {total:Number(rec.amount)||0,back:backtrackTotalFromInputs(rec.inputs),system:rec.inputs?.systemAmount,source:'saved '+other+' count ('+rec.date+')'};
  return {total:0,back:0,system:'',source:'no '+other+' count yet'};
 }
@@ -283,36 +295,64 @@ function getRecords(){
 }
 function putRecords(r){localStorage.setItem(KEY,JSON.stringify(r))}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function combinedSavedRows(){
+ const map=new Map();
+ getRecords().forEach((rec,index)=>{
+  const key=rec.date+'|'+String(rec.code).trim().toLowerCase();
+  if(!map.has(key))map.set(key,{date:rec.date,code:rec.code,warehouse:null,office:null,indices:{}});
+  const group=map.get(key),loc=locationOf(rec);
+  group[loc]=rec;group.indices[loc]=index;
+ });
+ return [...map.values()].sort((a,b)=>b.date.localeCompare(a.date)||a.code.localeCompare(b.code));
+}
+function savedRowMetrics(row){
+ const warehouse=Number(row.warehouse?.amount)||0,office=Number(row.office?.amount)||0;
+ const total=precise(warehouse+office);
+ const systemValues=[row.warehouse?.inputs?.systemAmount,row.office?.inputs?.systemAmount].filter(v=>v!==undefined&&v!==null&&String(v).trim()!=='');
+ const hasSystem=systemValues.length>0,system=hasSystem?whole(Number(systemValues[0])||0):0;
+ const back=backtrackTotalFromInputs(row.warehouse?.inputs)+backtrackTotalFromInputs(row.office?.inputs);
+ const initial=precise(total-system),remaining=precise(initial<0?initial+back:initial>0?initial-back:back);
+ const status=v=>v===0?'Matched':v>0?'Excess':'Short';
+ return {warehouse,office,total,hasSystem,system,back,initial,remaining,status:hasSystem?status(remaining):'—'};
+}
 function renderHistory(){
- const r=getRecords(), host=el('history');
- const visible=r.filter(x=>locationOf(x)===activeLocation);
- if(!visible.length){host.innerHTML='<div class="empty">No saved counts for this location yet.</div>';return}
- const groups={};
- visible.forEach(x=>(groups[x.date]??=[]).push(x));
- host.innerHTML=Object.keys(groups).sort().map(date=>`
-  <div class="day"><h3>${esc(displayDate(date))}</h3>
-  ${groups[date].map(x=>{const idx=r.indexOf(x);return `<div class="record"><div><button type="button" class="code loadRecord" data-index="${idx}">${esc(x.code)}</button></div><div class="recordRight"><div class="amount">${Number(x.amount).toLocaleString()}${x.inputs?.systemAmount!==undefined&&String(x.inputs.systemAmount).trim()!==''?`<div style="font-size:12px;font-weight:400">Location diff: ${((Number(x.amount)-Number(x.inputs.systemAmount))<0?(Number(x.amount)-Number(x.inputs.systemAmount))+backtrackTotalFromInputs(x.inputs):(Number(x.amount)-Number(x.inputs.systemAmount))>0?(Number(x.amount)-Number(x.inputs.systemAmount))-backtrackTotalFromInputs(x.inputs):backtrackTotalFromInputs(x.inputs)).toLocaleString()}</div>`:''}</div><button type="button" class="deleteRecord" data-index="${idx}" aria-label="Delete ${esc(x.code)}">−</button></div></div>`}).join('')}
-  </div>`).join('');
+ const rows=combinedSavedRows(),host=el('history');
+ if(!rows.length){host.innerHTML='<div class="empty">No saved inventory yet.</div>';return}
+ const groups={};rows.forEach(row=>(groups[row.date]??=[]).push(row));
+ const today=dateKey(), yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+ const yesterdayKey=dateKey(yesterday);
+ const todayRows=new Map(rows.filter(r=>r.date===today).map(r=>[String(r.code).trim().toLowerCase(),r]));
+ host.innerHTML=Object.keys(groups).sort().reverse().map(date=>`<div class="day"><h3>${esc(displayDate(date))}</h3>${groups[date].map(row=>{
+  const m=savedRowMetrics(row),idx=rows.indexOf(row);
+  const current=todayRows.get(String(row.code).trim().toLowerCase());
+  const expectedLocations=['warehouse','office'].filter(loc=>!!row[loc]);
+  const updated=date===yesterdayKey && expectedLocations.every(loc=>!!current?.[loc]);
+  const indicator=date===yesterdayKey
+    ?`<div class="update-indicator">${updated?'✓ Updated today':'● Not fully updated today'}</div>`:'';
+  return `<div class="record ${date===yesterdayKey?(updated?'yesterday-updated':'yesterday-pending'):''}"><div><button type="button" class="code loadCombined"  data-index="${idx}">${esc(row.code)}</button>${indicator}<div class="hint">Warehouse: ${m.warehouse.toLocaleString()} + Office: ${m.office.toLocaleString()}</div>${m.hasSystem?`<div class="hint">System: ${m.system.toLocaleString()} · Backtracked: ${m.back.toLocaleString()} · ${m.remaining>0?'+':''}${m.remaining.toLocaleString()} ${m.status}</div>`:''}</div><div class="recordRight"><div class="amount">${m.total.toLocaleString()}</div><button type="button" class="deleteCombined" data-index="${idx}" aria-label="Delete combined ${esc(row.code)}">−</button></div></div>`;
+ }).join('')}</div>`).join('');
+}
+function loadCombinedRow(row){
+ editingSavedProduct=true;
+ const makeDraft=(rec)=>rec?.inputs?{product:row.code,inputs:Object.fromEntries(ids.map(id=>[id,rec.inputs[id]??''])),backtracks:normalizeBacktracks(rec.inputs)}:null;
+ drafts.warehouse=makeDraft(row.warehouse);drafts.office=makeDraft(row.office);
+ // If one location lacks a count, keep the product and shared system amount ready to enter.
+ const sharedSystem=row.warehouse?.inputs?.systemAmount||row.office?.inputs?.systemAmount||'';
+ for(const loc of ['warehouse','office'])if(!drafts[loc]){
+  drafts[loc]={product:row.code,inputs:{systemAmount:sharedSystem},backtracks:[]};
+ }
+ restoreDraft(drafts[activeLocation]);
+ el('status').textContent=`Loaded combined ${row.code}: Warehouse and Office counts are available using the location buttons.`;
+ window.scrollTo({top:0,behavior:'smooth'});
 }
 el('history').addEventListener('click',e=>{
- const loadBtn=e.target.closest('.loadRecord');
- if(loadBtn){
-  const idx=Number(loadBtn.dataset.index),r=getRecords();
-  if(!Number.isInteger(idx)||idx<0||idx>=r.length)return;
-  const rec=r[idx];
-  if(!rec.inputs){el('status').textContent='Older record has no saved inputs. Recalculate and save it once.';return}
-  el('product').value=rec.code;
-  ids.forEach(id=>el(id).value=rec.inputs[id]??'');
-  backtrackEntries=normalizeBacktracks(rec.inputs);renderBacktrackEntries();calc(); window.scrollTo({top:0,behavior:'smooth'});
-  el('status').textContent=`Loaded ${rec.code}. Change values and SAVE COUNT to overwrite.`;
-  return;
+ const rows=combinedSavedRows(),load=e.target.closest('.loadCombined'),del=e.target.closest('.deleteCombined');
+ if(load){const row=rows[Number(load.dataset.index)];if(row)loadCombinedRow(row);return}
+ if(del){const row=rows[Number(del.dataset.index)];if(!row)return;
+  if(!confirm(`Delete Warehouse and Office saved counts for ${row.code} on ${row.date}?`))return;
+  const indices=new Set(Object.values(row.indices));putRecords(getRecords().filter((_,i)=>!indices.has(i)));
+  renderHistory();el('status').textContent=`Deleted combined record for ${row.code}.`;
  }
- const btn=e.target.closest('.deleteRecord');
- if(!btn)return;
- const idx=Number(btn.dataset.index), r=getRecords();
- if(!Number.isInteger(idx)||idx<0||idx>=r.length)return;
- const removed=r[idx]; r.splice(idx,1); putRecords(r); renderHistory();
- el('status').textContent=`Deleted ${removed.code}.`;
 });
 function resetInputs(){
  document.querySelectorAll('#palletPage input').forEach(x=>x.value='');
@@ -328,17 +368,65 @@ el('save').addEventListener('click',()=>{
  const existing=r.findIndex(x=>locationOf(x)===activeLocation && x.date===today && String(x.code).toLowerCase()===code.toLowerCase());
  const record={location:activeLocation,date:today,code,amount:c.total,inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value,looseQty:el('looseQty').value,looseEach:el('looseEach').value,systemAmount:el('systemAmount').value,backtracked:c.backtracked,backtrackEntries:c.backtrackEntries}};
  if(existing>=0) r[existing]=record; else r.push(record);
- putRecords(r);renderHistory();
- el('status').textContent=`Saved ${code}: ${c.total.toLocaleString()} items. Same code today in this location will be overwritten. Overall total adds both locations.`;
- resetInputs();
+ try{putRecords(r)}catch(err){el('status').textContent='Save failed: '+err.message;return}
+ const verified=getRecords().find(x=>locationOf(x)===activeLocation&&x.date===today&&String(x.code).toLowerCase()===code.toLowerCase());
+ if(!verified||Number(verified.amount)!==Number(c.total)){
+  el('status').textContent='Save could not be verified. Do not switch locations; export a backup and check browser storage.';return;
+ }
+ renderHistory();
+ el('status').textContent=`Saved ${code}: ${c.total.toLocaleString()} items. Same code today in this location will be overwritten. Saved Inventory combines both locations.`;
+ discardPreviousProduct();
+ el('status').textContent=`Saved ${code} (${activeLocation==='office'?'Office':'Warehouse'}): ${c.total.toLocaleString()} items. Verified in Saved Inventory. Calculator cleared.`;
 });
-el('clear').addEventListener('click',()=>{resetInputs();el('status').textContent='Calculator cleared.'});
+el('clear').addEventListener('click',()=>{editingSavedProduct=false;drafts.warehouse=null;drafts.office=null;resetInputs();el('status').textContent='Calculator cleared.'});
 el('export').addEventListener('click',()=>{
- const r=getRecords().filter(x=>locationOf(x)===activeLocation); if(!r.length){el('status').textContent='There are no records to export for this location.';return}
- const rows=[['Date','Product Code','Physical Count','System Amount','Backtracked Total','Backtracked Entries (Qty: Note)','Initial Difference','Initial Status','Remaining Difference','Remaining Status'],...r.map(x=>{const raw=x.inputs?.systemAmount;const has=raw!==undefined&&raw!==null&&String(raw).trim()!=='';const system=has?Math.max(0,Math.floor(Number(raw)||0)):null;const entries=normalizeBacktracks(x.inputs);const back=backtrackTotalFromInputs(x.inputs);const initial=has?Number(x.amount)-system:null;const remaining=has?(initial<0?initial+back:initial>0?initial-back:back):null;const status=v=>v===0?'Matched':v>0?'Excess':'Short';return [x.date,x.code,x.amount,has?system:'',back,entries.map(e=>`${e.qty}: ${e.note}`).join(' | '),has?initial:'',has?status(initial):'',has?remaining:'',has?status(remaining):'']})];
- const csv=rows.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+ const records=combinedSavedRows();if(!records.length){el('status').textContent='There are no inventory records to export.';return}
+ const rows=[['Date','Product Code','Warehouse Count','Office Count','Combined Physical Count','System Amount','Warehouse Backtracked','Office Backtracked','Total Backtracked','Backtracked Notes','Initial Difference','Remaining Difference','Remaining Status'],...records.map(row=>{
+  const m=savedRowMetrics(row),notes=['warehouse','office'].flatMap(loc=>normalizeBacktracks(row[loc]?.inputs).map(x=>`${loc}: ${x.qty} ${x.note}`)).join(' | ');
+  return [row.date,row.code,m.warehouse,m.office,m.total,m.hasSystem?m.system:'',backtrackTotalFromInputs(row.warehouse?.inputs),backtrackTotalFromInputs(row.office?.inputs),m.back,notes,m.hasSystem?m.initial:'',m.hasSystem?m.remaining:'',m.status];
+ })];
+ const csv=rows.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
- a.href=url;a.download=`pallet-${activeLocation}-inventory-records.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ a.href=url;a.download='pallet-combined-inventory-records.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+// Portable full-data backup (not the summary-only CSV). Includes inventory, POs,
+// carton/box settings and price tag changes; only the app's own keys are touched.
+const BACKUP_KEYS=[KEY,'palletCounterCustomDimensionsV1','palletCounterCustomPricesV1','palletCounterSavedCartonBoxV1','palletCounterPickingPOsV1'];
+function downloadBackup(){
+ const data={format:'pallet-counter-backup',version:1,exportedAt:new Date().toISOString(),stores:{}};
+ BACKUP_KEYS.forEach(key=>{const value=localStorage.getItem(key);if(value!==null)data.stores[key]=JSON.parse(value)});
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='pallet-counter-backup-'+dateKey()+'.json';a.click();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+ el('status').textContent='Data backup exported. Keep this JSON file in a safe place.';
+}
+el('backupData').addEventListener('click',()=>{try{downloadBackup()}catch(err){el('status').textContent='Backup failed: '+err.message}});
+el('importData').addEventListener('click',()=>el('importDataFile').click());
+el('importDataFile').addEventListener('change',async e=>{
+ const file=e.target.files?.[0];if(!file)return;
+ try{
+  if(file.size>20*1024*1024)throw new Error('Backup exceeds 20 MB.');
+  const data=JSON.parse(await file.text());
+  if(data?.format!=='pallet-counter-backup'||data.version!==1||!data.stores||typeof data.stores!=='object'||Array.isArray(data.stores))
+   throw new Error('Not a supported Pallet Counter JSON backup.');
+  const stores=data.stores;
+  if(Object.keys(stores).some(key=>!BACKUP_KEYS.includes(key)))throw new Error('Backup contains unknown storage keys.');
+  if(!Object.keys(stores).length)throw new Error('Backup contains no data.');
+  if(KEY in stores && (!Array.isArray(stores[KEY])||stores[KEY].some(r=>!r||typeof r!=='object'||typeof r.date!=='string'||typeof r.code!=='string'||!Number.isFinite(Number(r.amount)))))
+   throw new Error('Invalid inventory records.');
+  for(const key of BACKUP_KEYS.filter(k=>k!==KEY)){
+   if(key in stores && (!stores[key]||typeof stores[key]!=='object'||Array.isArray(stores[key])))
+    throw new Error('Invalid saved settings: '+key);
+  }
+  if(!confirm('Import backup and REPLACE existing app data (inventory, POs, saved quantities and prices)? Export your current backup first.'))return;
+  // Stage JSON serialization before any writes to prevent partial updates on bad values.
+  const staged=Object.fromEntries(Object.entries(stores).map(([k,v])=>[k,JSON.stringify(v)]));
+  BACKUP_KEYS.forEach(key=>{if(key in staged)localStorage.setItem(key,staged[key]);else localStorage.removeItem(key)});
+  alert('Backup imported successfully. The app will reload to show the restored data.');
+  location.reload();
+ }catch(err){el('status').textContent='Import failed: '+err.message;alert('Import failed: '+err.message)}
+ finally{e.target.value=''}
 });
 el('today').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
 renderBacktrackEntries();calc();renderHistory();
