@@ -28,7 +28,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 .record{display:grid;grid-template-columns:1fr auto;gap:12px;padding:10px 2px;border-top:1px solid #ddd;align-items:center}.record:first-of-type{border-top:0}
 .record.yesterday-updated{background:#e8f6eb;border-left:5px solid #20854a;padding-left:9px;border-radius:7px}
 .record.yesterday-pending{background:#fff2d7;border-left:5px solid #b97800;padding-left:9px;border-radius:7px}
-.update-indicator{display:inline-block;margin:4px 0;font-size:12px;font-weight:700}
+.recheck-btn{min-height:32px;font-size:12px;padding:3px 9px;margin:4px 0;border-radius:8px}.inventory-nav{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 6px}.inventory-nav button{min-height:40px;font-size:14px;padding:5px 10px;flex:1}.inventory-nav button[aria-pressed="true"]{background:#111;color:#fff}.inventory-date-select{margin:4px 0 10px}.update-indicator{display:inline-block;margin:4px 0;font-size:12px;font-weight:700}
 .yesterday-updated .update-indicator{color:#146b36}
 .yesterday-pending .update-indicator{color:#865600}
 .code{font-weight:700}.loadRecord{width:auto;min-height:44px;margin:0;padding:4px 8px;border:1px solid #aaa;border-radius:9px;background:#fff;color:#111;text-align:left;font-size:16px}.amount{font-size:18px;font-weight:750}.time{font-size:12px;color:#666}
@@ -128,7 +128,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <div class="actions"><button id="backupData" type="button">Export Data Backup (JSON)</button><button id="importData" type="button">Import Data Backup</button><input id="importDataFile" type="file" accept=".json,application/json" hidden></div>
 <p class="hint">Yesterday's products: <strong style="color:#146b36">Green = counted again today</strong>; <strong style="color:#865600">Amber = not counted today</strong>. A product is updated when both yesterday's counted locations have today's counts.</p>
 <p>One saved inventory entry per date and product combines Warehouse + Office. Tap a product to load its counts. Switch locations to view or edit either side; Save Count stores the active location.</p>
-<div id="history"></div>
+<div class="inventory-nav" aria-label="Saved inventory date navigation"><button type="button" class="dateNav" data-filter="today">Today</button><button type="button" class="dateNav" data-filter="yesterday">Yesterday</button><button type="button" class="dateNav" data-filter="all">All Dates</button></div><label class="inventory-date-select">Jump to saved date<select id="inventoryDate"><option value="all">All saved dates</option></select></label><div id="history"></div>
 </section>
 </main>
 
@@ -315,22 +315,30 @@ function savedRowMetrics(row){
  const status=v=>v===0?'Matched':v>0?'Excess':'Short';
  return {warehouse,office,total,hasSystem,system,back,initial,remaining,status:hasSystem?status(remaining):'—'};
 }
+const RECHECK_KEY='palletCounterRecheckV1';
+let inventoryFilter='all';
+function getRechecks(){try{return JSON.parse(localStorage.getItem(RECHECK_KEY)||'{}')}catch(e){return {}}}
+function recheckId(date,code){return date+'|'+String(code).trim().toLowerCase()}
+function updatedSinceReset(row,current,markers){if(!current)return false;const marker=Number(markers[recheckId(row.date,row.code)]||0);return ['warehouse','office'].filter(loc=>!!row[loc]).every(loc=>!!current[loc]&&(!marker||Number(current[loc].updatedAt||0)>marker));}
+function updateDateNavigation(groups){const dates=Object.keys(groups).sort().reverse(),select=el('inventoryDate');select.innerHTML='<option value="all">All saved dates</option>'+dates.map(d=>`<option value="${esc(d)}">${esc(displayDate(d))}</option>`).join('');if(!['all','today','yesterday'].includes(inventoryFilter)&&!dates.includes(inventoryFilter))inventoryFilter='all';select.value=dates.includes(inventoryFilter)?inventoryFilter:'all';document.querySelectorAll('.dateNav').forEach(btn=>btn.setAttribute('aria-pressed',String(btn.dataset.filter===inventoryFilter)));}
+document.querySelectorAll('.dateNav').forEach(btn=>btn.addEventListener('click',()=>{inventoryFilter=btn.dataset.filter;renderHistory();el('history').scrollIntoView({behavior:'smooth',block:'start'});}));
+el('inventoryDate').addEventListener('change',e=>{inventoryFilter=e.target.value;renderHistory()});
 function renderHistory(){
  const rows=combinedSavedRows(),host=el('history');
- if(!rows.length){host.innerHTML='<div class="empty">No saved inventory yet.</div>';return}
+ if(!rows.length){host.innerHTML='<div class="empty">No saved inventory yet.</div>';updateDateNavigation({});return}
  const groups={};rows.forEach(row=>(groups[row.date]??=[]).push(row));
  const today=dateKey(), yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
  const yesterdayKey=dateKey(yesterday);
- const todayRows=new Map(rows.filter(r=>r.date===today).map(r=>[String(r.code).trim().toLowerCase(),r]));
- host.innerHTML=Object.keys(groups).sort().reverse().map(date=>`<div class="day"><h3>${esc(displayDate(date))}</h3>${groups[date].map(row=>{
+ const todayRows=new Map(rows.filter(r=>r.date===today).map(r=>[String(r.code).trim().toLowerCase(),r]));const markers=getRechecks();updateDateNavigation(groups);const visibleDates=Object.keys(groups).sort().reverse().filter(date=>inventoryFilter==='all'||date===(inventoryFilter==='today'?today:inventoryFilter==='yesterday'?yesterdayKey:inventoryFilter));
+ host.innerHTML=visibleDates.map(date=>`<div class="day"><h3>${esc(displayDate(date))}</h3>${groups[date].map(row=>{
   const m=savedRowMetrics(row),idx=rows.indexOf(row);
   const current=todayRows.get(String(row.code).trim().toLowerCase());
   const expectedLocations=['warehouse','office'].filter(loc=>!!row[loc]);
-  const updated=date===yesterdayKey && expectedLocations.every(loc=>!!current?.[loc]);
+  const updated=date===yesterdayKey && updatedSinceReset(row,current,markers);
   const indicator=date===yesterdayKey
-    ?`<div class="update-indicator">${updated?'✓ Updated today':'● Not fully updated today'}</div>`:'';
+    ?`<div class="update-indicator">${updated?'✓ Updated today':'● Not fully updated today'}</div><div><button type="button" class="recheck-btn" data-index="${idx}">↻ Check again</button></div>`:'';
   return `<div class="record ${date===yesterdayKey?(updated?'yesterday-updated':'yesterday-pending'):''}"><div><button type="button" class="code loadCombined"  data-index="${idx}">${esc(row.code)}</button>${indicator}<div class="hint">Warehouse: ${m.warehouse.toLocaleString()} + Office: ${m.office.toLocaleString()}</div>${m.hasSystem?`<div class="hint">System: ${m.system.toLocaleString()} · Backtracked: ${m.back.toLocaleString()} · ${m.remaining>0?'+':''}${m.remaining.toLocaleString()} ${m.status}</div>`:''}</div><div class="recordRight"><div class="amount">${m.total.toLocaleString()}</div><button type="button" class="deleteCombined" data-index="${idx}" aria-label="Delete combined ${esc(row.code)}">−</button></div></div>`;
- }).join('')}</div>`).join('');
+ }).join('')}</div>`).join('') || '<div class="empty">No saved inventory for this date.</div>';
 }
 function loadCombinedRow(row){
  editingSavedProduct=true;
@@ -346,7 +354,7 @@ function loadCombinedRow(row){
  window.scrollTo({top:0,behavior:'smooth'});
 }
 el('history').addEventListener('click',e=>{
- const rows=combinedSavedRows(),load=e.target.closest('.loadCombined'),del=e.target.closest('.deleteCombined');
+ const rows=combinedSavedRows(),load=e.target.closest('.loadCombined'),del=e.target.closest('.deleteCombined'),recheck=e.target.closest('.recheck-btn');if(recheck){const row=rows[Number(recheck.dataset.index)];if(!row)return;const markers=getRechecks();markers[recheckId(row.date,row.code)]=Date.now();try{localStorage.setItem(RECHECK_KEY,JSON.stringify(markers))}catch(err){el('status').textContent='Cannot save recheck status: '+err.message;return}renderHistory();el('status').textContent=`${row.code} marked for recheck. Saved counts unchanged.`;return}
  if(load){const row=rows[Number(load.dataset.index)];if(row)loadCombinedRow(row);return}
  if(del){const row=rows[Number(del.dataset.index)];if(!row)return;
   if(!confirm(`Delete Warehouse and Office saved counts for ${row.code} on ${row.date}?`))return;
@@ -366,7 +374,7 @@ el('save').addEventListener('click',()=>{
  if(c.total<=0){el('status').textContent='Total items must be more than 0.';return}
  const now=new Date(), today=dateKey(now), r=getRecords();
  const existing=r.findIndex(x=>locationOf(x)===activeLocation && x.date===today && String(x.code).toLowerCase()===code.toLowerCase());
- const record={location:activeLocation,date:today,code,amount:c.total,inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value,looseQty:el('looseQty').value,looseEach:el('looseEach').value,systemAmount:el('systemAmount').value,backtracked:c.backtracked,backtrackEntries:c.backtrackEntries}};
+ const record={location:activeLocation,date:today,code,amount:c.total,updatedAt:Date.now(),inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value,looseQty:el('looseQty').value,looseEach:el('looseEach').value,systemAmount:el('systemAmount').value,backtracked:c.backtracked,backtrackEntries:c.backtrackEntries}};
  if(existing>=0) r[existing]=record; else r.push(record);
  try{putRecords(r)}catch(err){el('status').textContent='Save failed: '+err.message;return}
  const verified=getRecords().find(x=>locationOf(x)===activeLocation&&x.date===today&&String(x.code).toLowerCase()===code.toLowerCase());
@@ -391,7 +399,7 @@ el('export').addEventListener('click',()=>{
 });
 // Portable full-data backup (not the summary-only CSV). Includes inventory, POs,
 // carton/box settings and price tag changes; only the app's own keys are touched.
-const BACKUP_KEYS=[KEY,'palletCounterCustomDimensionsV1','palletCounterCustomPricesV1','palletCounterSavedCartonBoxV1','palletCounterPickingPOsV1'];
+const BACKUP_KEYS=[RECHECK_KEY,KEY,'palletCounterCustomDimensionsV1','palletCounterCustomPricesV1','palletCounterSavedCartonBoxV1','palletCounterPickingPOsV1'];
 function downloadBackup(){
  const data={format:'pallet-counter-backup',version:1,exportedAt:new Date().toISOString(),stores:{}};
  BACKUP_KEYS.forEach(key=>{const value=localStorage.getItem(key);if(value!==null)data.stores[key]=JSON.parse(value)});
