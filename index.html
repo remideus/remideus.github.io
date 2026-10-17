@@ -126,9 +126,9 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <section class="card">
 <div class="historyHead"><h2>Saved Inventory</h2><button id="export" type="button">Export CSV</button></div>
 <div class="actions"><button id="backupData" type="button">Export Data Backup (JSON)</button><button id="importData" type="button">Import Data Backup</button><input id="importDataFile" type="file" accept=".json,application/json" hidden></div>
-<p class="hint">Yesterday's products: <strong style="color:#146b36">Green = counted again today</strong>; <strong style="color:#865600">Amber = not counted today</strong>. A product is updated when both yesterday's counted locations have today's counts.</p>
+<p class="hint">Today's products: <strong style="color:#146b36">Green = checked</strong>; <strong style="color:#865600">Amber = check again</strong>. Use Check Again for one product or Check Again for All to restart today's checks without deleting saved counts.</p>
 <p>One saved inventory entry per date and product combines Warehouse + Office. Tap a product to load its counts. Switch locations to view or edit either side; Save Count stores the active location.</p>
-<div class="inventory-search" style="display:flex;gap:8px;align-items:center;margin:10px 0"><input id="inventorySearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" placeholder="Search saved product code" aria-label="Search saved inventory by product code" style="flex:1;min-width:0"><button id="clearInventorySearch" type="button" style="white-space:nowrap">Clear</button></div><div id="inventorySearchCount" class="hint" aria-live="polite"></div>
+<div class="actions"><button id="recheckAllToday" type="button">↻ Check Again for All (Today)</button></div><div class="inventory-search" style="display:flex;gap:8px;align-items:center;margin:10px 0"><input id="inventorySearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" placeholder="Search saved product code" aria-label="Search saved inventory by product code" style="flex:1;min-width:0"><button id="clearInventorySearch" type="button" style="white-space:nowrap">Clear</button></div><div id="inventorySearchCount" class="hint" aria-live="polite"></div>
 <div class="inventory-nav" aria-label="Saved inventory date navigation"><button type="button" class="dateNav" data-filter="today">Today</button><button type="button" class="dateNav" data-filter="yesterday">Yesterday</button><button type="button" class="dateNav" data-filter="all">All Dates</button></div><label class="inventory-date-select">Jump to saved date<select id="inventoryDate"><option value="all">All saved dates</option></select></label><div id="history"></div>
 </section>
 </main>
@@ -323,7 +323,22 @@ el('inventorySearch').addEventListener('input',e=>{inventorySearch=e.target.valu
 el('clearInventorySearch').addEventListener('click',()=>{inventorySearch='';el('inventorySearch').value='';renderHistory();el('inventorySearch').focus()});
 function getRechecks(){try{return JSON.parse(localStorage.getItem(RECHECK_KEY)||'{}')}catch(e){return {}}}
 function recheckId(date,code){return date+'|'+String(code).trim().toLowerCase()}
-function updatedSinceReset(row,current,markers){if(!current)return false;const marker=Number(markers[recheckId(row.date,row.code)]||0);return ['warehouse','office'].filter(loc=>!!row[loc]).every(loc=>!!current[loc]&&(!marker||Number(current[loc].updatedAt||0)>marker));}
+function updatedSinceReset(row,markers){
+ const marker=Number(markers[recheckId(row.date,row.code)]||0);
+ const dayMarker=Number(markers['all|'+row.date]||0);
+ const resetAt=Math.max(marker,dayMarker);
+ const locations=['warehouse','office'].filter(loc=>!!row[loc]);
+ // A saved zero count is checked; after reset each saved location must be saved again.
+ return locations.length>0 && locations.every(loc=>!resetAt||Number(row[loc].updatedAt||0)>resetAt);
+}
+el('recheckAllToday').addEventListener('click',()=>{
+ const today=dateKey();const rows=combinedSavedRows().filter(row=>row.date===today);
+ if(!rows.length){el('status').textContent='No saved inventory for today to mark for recheck.';return}
+ if(!confirm(`Mark all ${rows.length} products saved today as needing recheck? Saved quantities will not be deleted.`))return;
+ const markers=getRechecks();markers['all|'+today]=Date.now();
+ try{localStorage.setItem(RECHECK_KEY,JSON.stringify(markers))}catch(err){el('status').textContent='Cannot save recheck status: '+err.message;return}
+ renderHistory();el('status').textContent=`All ${rows.length} products saved today marked for recheck. Saved quantities are unchanged.`;
+});
 function updateDateNavigation(groups){const dates=Object.keys(groups).sort().reverse(),select=el('inventoryDate');select.innerHTML='<option value="all">All saved dates</option>'+dates.map(d=>`<option value="${esc(d)}">${esc(displayDate(d))}</option>`).join('');if(!['all','today','yesterday'].includes(inventoryFilter)&&!dates.includes(inventoryFilter))inventoryFilter='all';select.value=dates.includes(inventoryFilter)?inventoryFilter:'all';document.querySelectorAll('.dateNav').forEach(btn=>btn.setAttribute('aria-pressed',String(btn.dataset.filter===inventoryFilter)));}
 document.querySelectorAll('.dateNav').forEach(btn=>btn.addEventListener('click',()=>{inventoryFilter=btn.dataset.filter;renderHistory();el('history').scrollIntoView({behavior:'smooth',block:'start'});}));
 el('inventoryDate').addEventListener('change',e=>{inventoryFilter=e.target.value;renderHistory()});
@@ -331,19 +346,15 @@ function renderHistory(){
  const rows=combinedSavedRows(),host=el('history');
  if(!rows.length){host.innerHTML='<div class="empty">No saved inventory yet.</div>';el('inventorySearchCount').textContent='';updateDateNavigation({});return}
  const groups={};rows.forEach(row=>(groups[row.date]??=[]).push(row));
- const today=dateKey(), yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
- const yesterdayKey=dateKey(yesterday);
- const todayRows=new Map(rows.filter(r=>r.date===today).map(r=>[String(r.code).trim().toLowerCase(),r]));const markers=getRechecks();updateDateNavigation(groups);const visibleDates=Object.keys(groups).sort().reverse().filter(date=>inventoryFilter==='all'||date===(inventoryFilter==='today'?today:inventoryFilter==='yesterday'?yesterdayKey:inventoryFilter));
+ const today=dateKey(),markers=getRechecks();updateDateNavigation(groups);const visibleDates=Object.keys(groups).sort().reverse().filter(date=>inventoryFilter==='all'||date===(inventoryFilter==='today'?today:inventoryFilter==='yesterday'?yesterdayKey:inventoryFilter));
  const matchingRows=visibleDates.reduce((count,date)=>count+groups[date].filter(row=>String(row.code).toLowerCase().includes(inventorySearch)).length,0);
  el('inventorySearchCount').textContent=inventorySearch?`${matchingRows} matching saved ${matchingRows===1?'record':'records'}`:'';
  host.innerHTML=visibleDates.filter(date=>groups[date].some(row=>String(row.code).toLowerCase().includes(inventorySearch))).map(date=>`<div class="day"><h3>${esc(displayDate(date))}</h3>${groups[date].filter(row=>String(row.code).toLowerCase().includes(inventorySearch)).map(row=>{
   const m=savedRowMetrics(row),idx=rows.indexOf(row);
-  const current=todayRows.get(String(row.code).trim().toLowerCase());
-  const expectedLocations=['warehouse','office'].filter(loc=>!!row[loc]);
-  const updated=date===yesterdayKey && updatedSinceReset(row,current,markers);
-  const indicator=date===yesterdayKey
-    ?`<div class="update-indicator">${updated?'✓ Updated today':'● Not fully updated today'}</div><div><button type="button" class="recheck-btn" data-index="${idx}">↻ Check again</button></div>`:'';
-  return `<div class="record ${date===yesterdayKey?(updated?'yesterday-updated':'yesterday-pending'):''}"><div><button type="button" class="code loadCombined"  data-index="${idx}">${esc(row.code)}</button>${indicator}<div class="hint">Warehouse: ${m.warehouse.toLocaleString()} + Office: ${m.office.toLocaleString()}</div>${m.hasSystem?`<div class="hint">System: ${m.system.toLocaleString()} · Backtracked: ${m.back.toLocaleString()} · ${m.remaining>0?'+':''}${m.remaining.toLocaleString()} ${m.status}</div>`:''}</div><div class="recordRight"><div class="amount">${m.total.toLocaleString()}</div><button type="button" class="deleteCombined" data-index="${idx}" aria-label="Delete combined ${esc(row.code)}">−</button></div></div>`;
+  const updated=date===today && updatedSinceReset(row,markers);
+  const indicator=date===today
+    ?`<div class="update-indicator">${updated?'✓ Checked today':'● Check again'}</div><div><button type="button" class="recheck-btn" data-index="${idx}">↻ Check again</button></div>`:'';
+  return `<div class="record ${date===today?(updated?'yesterday-updated':'yesterday-pending'):''}"><div><button type="button" class="code loadCombined"  data-index="${idx}">${esc(row.code)}</button>${indicator}<div class="hint">Warehouse: ${m.warehouse.toLocaleString()} + Office: ${m.office.toLocaleString()}</div>${m.hasSystem?`<div class="hint">System: ${m.system.toLocaleString()} · Backtracked: ${m.back.toLocaleString()} · ${m.remaining>0?'+':''}${m.remaining.toLocaleString()} ${m.status}</div>`:''}</div><div class="recordRight"><div class="amount">${m.total.toLocaleString()}</div><button type="button" class="deleteCombined" data-index="${idx}" aria-label="Delete combined ${esc(row.code)}">−</button></div></div>`;
  }).join('')}</div>`).join('') || '<div class="empty">No matching products for this search and date selection.</div>';
 }
 function loadCombinedRow(row){
