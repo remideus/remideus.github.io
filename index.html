@@ -126,7 +126,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <section class="card">
 <div class="historyHead"><h2>Saved Inventory</h2><button id="export" type="button">Export CSV</button></div>
 <div class="actions"><button id="backupData" type="button">Export Data Backup (JSON)</button><button id="importData" type="button">Import Data Backup</button><input id="importDataFile" type="file" accept=".json,application/json" hidden></div>
-<p class="hint">Today's products: <strong style="color:#146b36">Green = checked</strong>; <strong style="color:#865600">Amber = check again</strong>. Use Check Again for one product or Check Again for All to restart today's checks without deleting saved counts.</p>
+<p class="hint">Today: <strong style="color:#146b36">Green = Warehouse AND Office checked</strong>; <strong style="color:#865600">Amber = one or both locations still need checking</strong>. A saved zero count counts as checked. Check Again resets both location statuses without deleting quantities.</p>
 <p>One saved inventory entry per date and product combines Warehouse + Office. Tap a product to load its counts. Switch locations to view or edit either side; Save Count stores the active location.</p>
 <div class="actions"><button id="recheckAllToday" type="button">↻ Check Again for All (Today)</button></div><div class="inventory-search" style="display:flex;gap:8px;align-items:center;margin:10px 0"><input id="inventorySearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" placeholder="Search saved product code" aria-label="Search saved inventory by product code" style="flex:1;min-width:0"><button id="clearInventorySearch" type="button" style="white-space:nowrap">Clear</button></div><div id="inventorySearchCount" class="hint" aria-live="polite"></div>
 <div class="inventory-nav" aria-label="Saved inventory date navigation"><button type="button" class="dateNav" data-filter="today">Today</button><button type="button" class="dateNav" data-filter="yesterday">Yesterday</button><button type="button" class="dateNav" data-filter="all">All Dates</button></div><label class="inventory-date-select">Jump to saved date<select id="inventoryDate"><option value="all">All saved dates</option></select></label><div id="history"></div>
@@ -298,10 +298,18 @@ function calc(){
  el('breakdown').textContent=`${boxes.toLocaleString()} full boxes × ${per.toLocaleString()} items/box + ${looseQty.toLocaleString()} × ${looseEach.toLocaleString()} = ${loose.toLocaleString()} partial/loose items`;
  return {last,full,boxes,per,loose,total,systemAmount:el('systemAmount').value.trim()===''?null:whole(num('systemAmount')),backtracked,backtrackEntries:backtrackEntries.map(x=>({...x}))};
 }
+// Never silently treat unreadable inventory data as an empty database.
 function getRecords(){
- try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){return[]}
+ const raw=localStorage.getItem(KEY);
+ if(raw===null)return [];
+ let records;
+ try{records=JSON.parse(raw)}catch(e){throw new Error('Saved inventory data is corrupted. Export a backup or restore a valid JSON backup before saving. '+e.message)}
+ if(!Array.isArray(records)||records.some(r=>!r||typeof r!=='object'||typeof r.date!=='string'||typeof r.code!=='string'||!Number.isFinite(Number(r.amount))))
+  throw new Error('Saved inventory data has an invalid structure. Do not overwrite it; restore a valid backup.');
+ return records;
 }
 function putRecords(r){localStorage.setItem(KEY,JSON.stringify(r))}
+
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function combinedSavedRows(){
  const map=new Map();
@@ -334,9 +342,8 @@ function updatedSinceReset(row,markers){
  const marker=Number(markers[recheckId(row.date,row.code)]||0);
  const dayMarker=Number(markers['all|'+row.date]||0);
  const resetAt=Math.max(marker,dayMarker);
- const locations=['warehouse','office'].filter(loc=>!!row[loc]);
- // A saved zero count is checked; after reset each saved location must be saved again.
- return locations.length>0 && locations.every(loc=>!resetAt||Number(row[loc].updatedAt||0)>resetAt);
+ // Both locations are mandatory. A saved zero count counts as checked.
+ return ['warehouse','office'].every(loc=>!!row[loc]&&(!resetAt||Number(row[loc].updatedAt||0)>resetAt));
 }
 el('recheckAllToday').addEventListener('click',()=>{
  const today=dateKey();const rows=combinedSavedRows().filter(row=>row.date===today);
@@ -350,6 +357,9 @@ function updateDateNavigation(groups){const dates=Object.keys(groups).sort().rev
 document.querySelectorAll('.dateNav').forEach(btn=>btn.addEventListener('click',()=>{inventoryFilter=btn.dataset.filter;renderHistory();el('history').scrollIntoView({behavior:'smooth',block:'start'});}));
 el('inventoryDate').addEventListener('change',e=>{inventoryFilter=e.target.value;renderHistory()});
 function renderHistory(){
+ try{renderHistoryUnsafe()}catch(err){el('history').textContent='Inventory warning: '+err.message;el('status').textContent='Inventory warning: '+err.message}
+}
+function renderHistoryUnsafe(){
  const rows=combinedSavedRows(),host=el('history');
  if(!rows.length){host.innerHTML='<div class="empty">No saved inventory yet.</div>';el('inventorySearchCount').textContent='';updateDateNavigation({});return}
  const groups={};rows.forEach(row=>(groups[row.date]??=[]).push(row));
@@ -359,8 +369,11 @@ function renderHistory(){
  host.innerHTML=visibleDates.filter(date=>groups[date].some(row=>String(row.code).toLowerCase().includes(inventorySearch))).map(date=>`<div class="day"><h3>${esc(displayDate(date))}</h3>${groups[date].filter(row=>String(row.code).toLowerCase().includes(inventorySearch)).map(row=>{
   const m=savedRowMetrics(row),idx=rows.indexOf(row);
   const updated=date===today && updatedSinceReset(row,markers);
+  const resetAt=Math.max(Number(markers[recheckId(row.date,row.code)]||0),Number(markers['all|'+row.date]||0));
+  const locChecked=loc=>!!row[loc]&&(!resetAt||Number(row[loc].updatedAt||0)>resetAt);
+  const checkLabel=loc=>`${loc==='warehouse'?'Warehouse':'Office'}: ${locChecked(loc)?'✓ Checked':'○ Pending'}`;
   const indicator=date===today
-    ?`<div class="update-indicator">${updated?'✓ Checked today':'● Check again'}</div><div><button type="button" class="recheck-btn" data-index="${idx}">↻ Check again</button></div>`:'';
+    ?`<div class="update-indicator">${updated?'✓ Both locations checked':'● Incomplete / check again'}</div><div class="hint">${checkLabel('warehouse')} · ${checkLabel('office')}</div><div><button type="button" class="recheck-btn" data-index="${idx}">↻ Check again</button></div>`:'';
   return `<div class="record ${date===today?(updated?'yesterday-updated':'yesterday-pending'):''}"><div><button type="button" class="code loadCombined"  data-index="${idx}">${esc(row.code)}</button>${indicator}<div class="hint">Warehouse: ${m.warehouse.toLocaleString()} + Office: ${m.office.toLocaleString()}</div>${m.hasSystem?`<div class="hint">System: ${m.system.toLocaleString()} · Backtracked: ${m.back.toLocaleString()} · ${m.remaining>0?'+':''}${m.remaining.toLocaleString()} ${m.status}</div>`:''}</div><div class="recordRight"><div class="amount">${m.total.toLocaleString()}</div><button type="button" class="deleteCombined" data-index="${idx}" aria-label="Delete combined ${esc(row.code)}">−</button></div></div>`;
  }).join('')}</div>`).join('') || '<div class="empty">No matching products for this search and date selection.</div>';
 }
@@ -400,13 +413,18 @@ function resetInputs(){
 ids.forEach(id=>el(id).addEventListener('input',()=>{if(sharedIds.includes(id)){for(const loc of ['warehouse','office'])if(drafts[loc])drafts[loc].inputs[id]=el(id).value}calc()}));
 el('product').addEventListener('input',()=>{sharedProduct=el('product').value;calc()});
 el('save').addEventListener('click',()=>{
+ try{
  syncSharedFromForm();
  const code=el('product').value.trim(), c=calc();
  if(!code){el('status').textContent='Enter a product code before saving.';el('product').focus();return}
  // A confirmed zero count is valid inventory and must be saved like any other count.
  if(!Number.isFinite(c.total)||c.total<0){el('status').textContent='Total items must be a valid non-negative number.';return}
  const now=new Date(), today=dateKey(now), r=getRecords();
- const existing=r.findIndex(x=>locationOf(x)===activeLocation && x.date===today && String(x.code).toLowerCase()===code.toLowerCase());
+ const existing=r.findIndex(x=>locationOf(x)===activeLocation && x.date===today && String(x.code).trim().toLowerCase()===code.toLowerCase());
+ if(existing>=0 && Number(r[existing].amount)!==Number(c.total) &&
+  !confirm(`Overwrite today's ${activeLocation==='office'?'Office':'Warehouse'} count for ${code}?\nPrevious: ${Number(r[existing].amount).toLocaleString()} items\nNew: ${c.total.toLocaleString()} items`)){
+  el('status').textContent='Save cancelled. Your inputs are unchanged.';return;
+ }
  const record={location:activeLocation,date:today,code,amount:c.total,updatedAt:Date.now(),inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value,looseQty:el('looseQty').value,looseEach:el('looseEach').value,systemAmount:el('systemAmount').value,backtracked:c.backtracked,backtrackEntries:c.backtrackEntries}};
  if(existing>=0) r[existing]=record; else r.push(record);
  // Keep common values in both saved location records without changing the other physical count.
@@ -420,7 +438,7 @@ el('save').addEventListener('click',()=>{
 
  try{putRecords(r)}catch(err){el('status').textContent='Save failed: '+err.message;return}
  const verified=getRecords().find(x=>locationOf(x)===activeLocation&&x.date===today&&String(x.code).toLowerCase()===code.toLowerCase());
- if(!verified||Number(verified.amount)!==Number(c.total)){
+ if(!verified||Number(verified.amount)!==Number(c.total)||String(verified.inputs?.items)!==String(record.inputs.items)||String(verified.inputs?.systemAmount)!==String(record.inputs.systemAmount)){
   el('status').textContent='Save could not be verified. Do not switch locations; export a backup and check browser storage.';return;
  }
  renderHistory();
@@ -428,12 +446,13 @@ el('save').addEventListener('click',()=>{
  // After a verified save, clear every input and both location drafts for the next product.
  discardPreviousProduct();
  el('status').textContent=`Saved ${code} (${activeLocation==='office'?'Office':'Warehouse'}): ${c.total.toLocaleString()} items. Verified in Saved Inventory. All inputs cleared.`;
+ }catch(err){el('status').textContent='Save failed; inputs kept: '+err.message}
 });
 el('clear').addEventListener('click',()=>{editingSavedProduct=false;drafts.warehouse=null;drafts.office=null;sharedProduct='';sharedBacktracks=[];resetInputs();el('status').textContent='Calculator cleared.'});
 el('export').addEventListener('click',()=>{
  const records=combinedSavedRows();if(!records.length){el('status').textContent='There are no inventory records to export.';return}
  const rows=[['Date','Product Code','Warehouse Count','Office Count','Combined Physical Count','System Amount','Warehouse Backtracked','Office Backtracked','Total Backtracked','Backtracked Notes','Initial Difference','Remaining Difference','Remaining Status'],...records.map(row=>{
-  const m=savedRowMetrics(row),notes=['warehouse','office'].flatMap(loc=>normalizeBacktracks(row[loc]?.inputs).map(x=>`${loc}: ${x.qty} ${x.note}`)).join(' | ');
+  const m=savedRowMetrics(row),sharedNotes=normalizeBacktracks((row.warehouse?.inputs?.backtrackEntries?.length?row.warehouse:row.office)?.inputs),notes=sharedNotes.map(x=>`${x.qty} ${x.note}`).join(' | ');
   return [row.date,row.code,m.warehouse,m.office,m.total,m.hasSystem?m.system:'',backtrackTotalFromInputs(row.warehouse?.inputs),backtrackTotalFromInputs(row.office?.inputs),m.back,notes,m.hasSystem?m.initial:'',m.hasSystem?m.remaining:'',m.status];
  })];
  const csv=rows.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
@@ -473,14 +492,23 @@ el('importDataFile').addEventListener('change',async e=>{
   if(!confirm('Import backup and REPLACE existing app data (inventory, POs, saved quantities and prices)? Export your current backup first.'))return;
   // Stage JSON serialization before any writes to prevent partial updates on bad values.
   const staged=Object.fromEntries(Object.entries(stores).map(([k,v])=>[k,JSON.stringify(v)]));
-  BACKUP_KEYS.forEach(key=>{if(key in staged)localStorage.setItem(key,staged[key]);else localStorage.removeItem(key)});
+  const previous=Object.fromEntries(BACKUP_KEYS.map(key=>[key,localStorage.getItem(key)]));
+  try{
+   BACKUP_KEYS.forEach(key=>{if(key in staged)localStorage.setItem(key,staged[key]);else localStorage.removeItem(key)});
+   for(const key of BACKUP_KEYS)if(localStorage.getItem(key)!==(key in staged?staged[key]:null))throw new Error('Backup write verification failed for '+key);
+  }catch(importErr){
+   let rollbackFailed=false;
+   for(const key of BACKUP_KEYS){try{if(previous[key]===null)localStorage.removeItem(key);else localStorage.setItem(key,previous[key])}catch(e){rollbackFailed=true}}
+   throw new Error('Import could not finish. '+importErr.message+(rollbackFailed?' Previous data could not be fully restored; do not make further changes.':' Previous data restored.'));
+  }
   alert('Backup imported successfully. The app will reload to show the restored data.');
   location.reload();
  }catch(err){el('status').textContent='Import failed: '+err.message;alert('Import failed: '+err.message)}
  finally{e.target.value=''}
 });
 el('today').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
-renderBacktrackEntries();calc();renderHistory();
+renderBacktrackEntries();
+try{calc();renderHistory()}catch(err){el('status').textContent='Inventory warning: '+err.message;el('history').textContent='Cannot read saved inventory. Restore a valid backup before saving.';}
 
 // Workbook-backed product calculator; independent of pallet-count storage.
 const productSizes=[["288&24", 288, 24], ["144&12", 144, 12], ["240&24", 240, 24], ["96&12", 96, 12], ["200&10", 200, 10], ["100&10", 100, 10], ["6&1", 6, 1], ["10&1", 10, 1], ["40&10", 40, 10], ["12&12", 12, 12], ["48&6", 48, 6], ["96&24", 96, 24], ["288&36", 288, 36], ["216&36", 216, 36], ["432&18", 432, 18], ["108&9", 108, 9], ["48&4", 48, 4], ["72&8", 72, 8], ["20&5", 20, 5], ["144&1", 144, 1], ["144&24", 144, 24], ["216&18", 216, 18], ["54&9", 54, 9], ["192&16", 192, 16], ["216&12", 216, 12]];
