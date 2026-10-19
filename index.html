@@ -101,6 +101,12 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 </div>
 <div class="total"><div>COMBINED PHYSICAL COUNT</div><div class="num" id="combinedTotal">0</div></div>
 <div class="hint" id="combinedHint"></div>
+<div class="results" style="margin-top:12px">
+<div class="box"><label for="yesterdayPhysical">Yesterday's saved total (Warehouse + Office)</label><input id="yesterdayPhysical" type="text" readonly placeholder="No record yesterday"></div>
+<div class="box"><label for="todaySavedPhysical">Today's last saved total (Warehouse + Office)</label><input id="todaySavedPhysical" type="text" readonly placeholder="No saved count today"></div>
+</div>
+<div class="hint" id="physicalComparison" aria-live="polite">Enter a product code to compare saved counts.</div>
+<p class="hint">Reference totals are read-only. They do not change System Amount or Matched / Short / Excess. Today's saved total updates after saving.</p>
 </section>
 <section class="card">
 <h2>Stock Reconciliation</h2>
@@ -265,6 +271,27 @@ function matchingOtherData(code){
  if(rec)return {total:Number(rec.amount)||0,back:backtrackTotalFromInputs(rec.inputs),system:rec.inputs?.systemAmount,source:'saved '+other+' count ('+rec.date+')'};
  return {total:0,back:0,system:'',source:'no '+other+' count yet'};
 }
+function savedPhysicalReference(code,day){
+ if(!code)return null;
+ const matches=getRecords().filter(r=>r.date===day&&String(r.code).trim().toLowerCase()===code.toLowerCase());
+ if(!matches.length)return null;
+ const byLocation={};for(const r of matches)byLocation[locationOf(r)]=r;
+ return {total:precise((Number(byLocation.warehouse?.amount)||0)+(Number(byLocation.office?.amount)||0)),locations:Object.keys(byLocation).length};
+}
+function refreshPhysicalReferences(code,currentTotal){
+ const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+ const prior=savedPhysicalReference(code,dateKey(yesterday));
+ const today=savedPhysicalReference(code,dateKey());
+ el('yesterdayPhysical').value=prior?prior.total.toLocaleString():'';
+ el('todaySavedPhysical').value=today?today.total.toLocaleString():'';
+ if(!code){el('physicalComparison').textContent='Enter a product code to compare saved counts.';return}
+ const comparisons=[];
+ if(prior)comparisons.push(`vs yesterday: ${precise(currentTotal-prior.total)>0?'+':''}${precise(currentTotal-prior.total).toLocaleString()} (${prior.locations}/2 locations saved yesterday)`);
+ else comparisons.push('No saved record yesterday');
+ if(today)comparisons.push(`vs today last saved: ${precise(currentTotal-today.total)>0?'+':''}${precise(currentTotal-today.total).toLocaleString()} (${today.locations}/2 locations saved today)`);
+ else comparisons.push('No saved record today');
+ el('physicalComparison').textContent=comparisons.join(' · ');
+}
 function calc(){
  const last=Math.max(0,precise(decimal(num('lw'))*decimal(num('ll'))*whole(num('lh'))+Math.trunc(num('extra'))));
  const full=precise(whole(num('fp'))*decimal(num('fw'))*decimal(num('fl'))*whole(num('fh')));
@@ -280,6 +307,7 @@ function calc(){
  el('warehouseTotal').textContent=warehouse.toLocaleString();
  el('officeTotal').textContent=office.toLocaleString();
  el('combinedTotal').textContent=combined.toLocaleString();
+ refreshPhysicalReferences(code,combined);
  el('combinedHint').textContent=code?'Other location: '+other.source+'. Only counts for product '+code+' are combined.':'Enter a product code to find the other location count.';
  const systemRaw=el('systemAmount').value.trim() || String(other.system??'').trim();
  const hasSystem=systemRaw!=='';
