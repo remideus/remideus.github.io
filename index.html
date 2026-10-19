@@ -425,9 +425,9 @@ el('save').addEventListener('click',()=>{
  }
  renderHistory();
  el('status').textContent=`Saved ${code}: ${c.total.toLocaleString()} items. Same code today in this location will be overwritten. Saved Inventory combines both locations.`;
- drafts[activeLocation]={product:sharedProduct,inputs:{items:el('items').value,systemAmount:el('systemAmount').value},backtracks:sharedBacktracks.map(x=>({...x}))};
- restoreDraft(drafts[activeLocation]);
- el('status').textContent=`Saved ${code} (${activeLocation==='office'?'Office':'Warehouse'}): ${c.total.toLocaleString()} items. Verified in Saved Inventory. Shared fields and the other location draft retained.`;
+ // After a verified save, clear every input and both location drafts for the next product.
+ discardPreviousProduct();
+ el('status').textContent=`Saved ${code} (${activeLocation==='office'?'Office':'Warehouse'}): ${c.total.toLocaleString()} items. Verified in Saved Inventory. All inputs cleared.`;
 });
 el('clear').addEventListener('click',()=>{editingSavedProduct=false;drafts.warehouse=null;drafts.office=null;sharedProduct='';sharedBacktracks=[];resetInputs();el('status').textContent='Calculator cleared.'});
 el('export').addEventListener('click',()=>{
