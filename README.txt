@@ -13,3 +13,5 @@ V20: Switching Office/Warehouse clears the calculator instead of restoring an ea
 V21: Saving clears the product and all inputs. Office/Warehouse toggle always starts blank and does not reopen a saved product. Other-location count only auto-matches the same product on the current date, preventing old counts from previous days from appearing. Tap Saved Inventory to load deliberately.
 
 Version 25: confirmed zero-item counts can be saved for Office or Warehouse.
+
+Version 33: Separate reversible stock-adjustment ledger per product. Original physical counts preserved; adjusted stock displayed in calculator and Saved Inventory. JSON backup includes palletCounterStockAdjustmentsV1. Reversals retain audit history. Backtracked reconciliation remains independent.
