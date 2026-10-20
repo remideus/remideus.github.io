@@ -105,7 +105,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <div class="total"><div>ADJUSTED STOCK TOTAL</div><div class="num" id="adjustedTotal">0</div></div>
 <p class="hint">Original physical counts remain unchanged. Adjustments affect the adjusted total only and are never included in backtracked reconciliation.</p>
 </section>
-<section class="card" id="stockAdjustmentCard"><h2>Stock Adjustments</h2><p>Add or deduct pieces, boxes, or cartons for the selected product. Notes are required. Removing an active adjustment reverses its effect without deleting the audit record.</p>
+<section class="card" id="stockAdjustmentCard"><h2>Stock Adjustments</h2><p>Add or deduct pieces, boxes, or cartons for the selected product. Notes are required. Tap Remove beside an entry to undo its effect on the total, just like Backtracked Entries. Removed entries remain in audit history.</p>
 <div class="grid2"><label>Action<select id="adjustAction"><option value="minus">Deduct (−)</option><option value="plus">Add (+)</option></select></label><label>Quantity<input id="adjustQty" type="number" inputmode="numeric" min="1" step="1" placeholder="20"></label></div>
 <div class="grid2"><label>Unit<select id="adjustUnit"><option value="cartons">Cartons</option><option value="boxes">Boxes</option><option value="pieces">Pieces</option></select></label><label>Pieces per carton / box<input id="adjustEach" type="number" inputmode="numeric" min="1" step="1" placeholder="12"></label></div>
 <label>Where / why (required)<input id="adjustNote" type="text" maxlength="200" placeholder="e.g. Enterprise"></label>
@@ -305,11 +305,15 @@ function adjustmentEntries(code){return getAdjustments()[adjustCode(code)]||[]}
 function adjustmentNet(code){return adjustmentEntries(code).filter(x=>x.active).reduce((n,x)=>n+(x.action==='plus'?x.pieces:-x.pieces),0)}
 function adjustmentDisplay(code,original){
  const entries=code?adjustmentEntries(code):[],net=code?adjustmentNet(code):0;
+ const active=entries.filter(x=>x.active),removed=entries.filter(x=>!x.active);
  el('adjustOriginal').textContent=original.toLocaleString();
  el('adjustNet').textContent=(net>0?'+':'')+net.toLocaleString();
  el('adjustedTotal').textContent=(original+net).toLocaleString();
- el('adjustmentEntries').innerHTML=entries.length?entries.map(x=>`<div class="record"><div><strong>${x.active?'Active':'Reversed'} · ${x.action==='minus'?'−':'+'}${x.pieces.toLocaleString()} pieces</strong><div class="hint">${esc(x.qty)} ${esc(x.unit)} × ${esc(x.each)} · ${esc(x.note)}</div><div class="hint">${esc(x.createdAt||'')}${x.reversedAt?' · Reversed '+esc(x.reversedAt):''}</div></div>${x.active?`<button type="button" class="reverseAdjustment" data-id="${esc(x.id)}" style="font-size:13px;min-height:42px">Reverse</button>`:''}</div>`).join(''):'<div class="hint">No stock adjustments for this product.</div>';
+ const activeHtml=active.map(x=>`<div class="record"><div><strong>${x.action==='minus'?'−':'+'}${x.pieces.toLocaleString()} pieces</strong><div class="hint">${esc(x.qty)} ${esc(x.unit)} × ${esc(x.each)} · ${esc(x.note)}</div></div><button type="button" class="reverseAdjustment" data-id="${esc(x.id)}" style="font-size:13px;min-height:42px">Remove</button></div>`).join('');
+ const historyHtml=removed.length?`<details style="margin-top:10px"><summary>Removed adjustments (${removed.length}) — audit history</summary>${removed.map(x=>`<div class="record"><div><strong>Removed · ${x.action==='minus'?'−':'+'}${x.pieces.toLocaleString()} pieces</strong><div class="hint">${esc(x.qty)} ${esc(x.unit)} × ${esc(x.each)} · ${esc(x.note)}</div><div class="hint">${esc(x.createdAt||'')}${x.reversedAt?' · Removed '+esc(x.reversedAt):''}</div></div></div>`).join('')}</details>`:'';
+ el('adjustmentEntries').innerHTML=(activeHtml||'<div class="hint">No active stock adjustments for this product.</div>')+historyHtml;
 }
+
 el('addAdjustment').addEventListener('click',()=>{
  try{
  const code=el('product').value.trim(),action=el('adjustAction').value,unit=el('adjustUnit').value;
@@ -332,10 +336,10 @@ el('adjustmentEntries').addEventListener('click',e=>{
  const button=e.target.closest('.reverseAdjustment');if(!button)return;
  try{const code=el('product').value.trim(),ledger=getAdjustments(),entry=(ledger[adjustCode(code)]||[]).find(x=>x.id===button.dataset.id&&x.active);
  if(!entry)return;
- if(!confirm(`Reverse ${entry.action==='minus'?'deduction':'addition'} of ${entry.pieces.toLocaleString()} pieces (${entry.note})? The history will be retained.`))return;
+ if(!confirm(`Remove ${entry.action==='minus'?'deduction':'addition'} of ${entry.pieces.toLocaleString()} pieces (${entry.note})? ${entry.action==='minus'?'The deducted amount will be added back to the adjusted total.':'The added amount will be subtracted from the adjusted total.'} The history will be retained.`))return;
  entry.active=false;entry.reversedAt=new Date().toISOString();localStorage.setItem(ADJUST_KEY,JSON.stringify(ledger));
  if(getAdjustments()[adjustCode(code)].find(x=>x.id===entry.id)?.active!==false)throw new Error('Reversal verification failed.');
- calc();renderHistory();el('adjustMessage').textContent='Adjustment reversed. Audit history retained.';
+ calc();renderHistory();el('adjustMessage').textContent='Adjustment removed. Adjusted total recalculated; audit history retained.';
  }catch(err){el('adjustMessage').textContent='Cannot reverse: '+err.message}
 });
 function calc(){
