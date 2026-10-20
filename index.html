@@ -94,16 +94,14 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 
 <section class="card" id="combinedStock" aria-live="polite">
 <h2>Overall Stock (Office + Warehouse)</h2>
-<p>Both locations are counted separately, then added together for the same product. System stock is compared against their combined total.</p>
+<p>Both locations are counted separately. Combined Physical Count includes active stock adjustments and is compared with the system amount.</p>
 <div class="results">
 <div class="box"><div>Warehouse Items</div><div class="num" id="warehouseTotal">0</div></div>
 <div class="box"><div>Office Items</div><div class="num" id="officeTotal">0</div></div>
 </div>
 <div class="total"><div>COMBINED PHYSICAL COUNT</div><div class="num" id="combinedTotal">0</div></div>
 <div class="hint" id="combinedHint"></div>
-<div class="results" style="margin-top:10px"><div class="box"><div>Original combined count</div><div class="num" id="adjustOriginal">0</div></div><div class="box"><div>Active adjustments</div><div class="num" id="adjustNet">0</div></div></div>
-<div class="total"><div>ADJUSTED STOCK TOTAL</div><div class="num" id="adjustedTotal">0</div></div>
-<p class="hint">Original physical counts remain unchanged. Adjustments affect the adjusted total only and are never included in backtracked reconciliation.</p>
+<p class="hint">Combined Physical Count includes active stock adjustments. Warehouse and Office counts remain unchanged. Removing an adjustment restores its effect automatically.</p>
 </section>
 <section class="card" id="stockAdjustmentCard"><h2>Stock Adjustments</h2><p>Add or deduct pieces, boxes, or cartons for the selected product. Notes are required. Tap Remove beside an entry to undo its effect on the total, just like Backtracked Entries. Removed entries disappear from the list immediately.</p>
 <div class="grid2"><label>Action<select id="adjustAction"><option value="minus">Deduct (−)</option><option value="plus">Add (+)</option></select></label><label>Quantity<input id="adjustQty" type="number" inputmode="numeric" min="1" step="1" placeholder="20"></label></div>
@@ -306,9 +304,7 @@ function adjustmentNet(code){return adjustmentEntries(code).filter(x=>x.active).
 function adjustmentDisplay(code,original){
  const entries=code?adjustmentEntries(code):[],net=code?adjustmentNet(code):0;
  const active=entries.filter(x=>x.active);
- el('adjustOriginal').textContent=original.toLocaleString();
- el('adjustNet').textContent=(net>0?'+':'')+net.toLocaleString();
- el('adjustedTotal').textContent=(original+net).toLocaleString();
+ el('combinedTotal').textContent=(original+net).toLocaleString();
  const activeHtml=active.map(x=>`<div class="record"><div><strong>${x.action==='minus'?'−':'+'}${x.pieces.toLocaleString()} pieces</strong><div class="hint">${esc(x.qty)} ${esc(x.unit)} × ${esc(x.each)} · ${esc(x.note)}</div></div><button type="button" class="reverseAdjustment" data-id="${esc(x.id)}" style="font-size:13px;min-height:42px">Remove</button></div>`).join('');
  el('adjustmentEntries').innerHTML=(activeHtml||'<div class="hint">No active stock adjustments for this product.</div>');
 }
@@ -322,7 +318,7 @@ el('addAdjustment').addEventListener('click',()=>{
  if(!note)throw new Error('Enter a note explaining the movement.');
  const pieces=qty*each,ledger=getAdjustments(),key=adjustCode(code),now=new Date().toISOString();
  const current=(ledger[key]||[]).filter(x=>x.active).reduce((sum,x)=>sum+(x.action==='plus'?x.pieces:-x.pieces),0);
- const original=Number(el('combinedTotal').textContent.replace(/,/g,''))||0;
+ const original=(Number(el('warehouseTotal').textContent.replace(/,/g,''))||0)+(Number(el('officeTotal').textContent.replace(/,/g,''))||0);
  if(action==='minus'&&original+current-pieces<0&&!confirm('This deduction makes the adjusted stock negative. Continue?'))return;
  if(!confirm(`${action==='minus'?'Deduct':'Add'} ${pieces.toLocaleString()} pieces for ${code}?\nNote: ${note}`))return;
  (ledger[key]??=[]).push({id:now+'-'+Math.random().toString(36).slice(2),action,qty,unit,each,pieces,note,active:true,createdAt:now});
@@ -364,7 +360,7 @@ function calc(){
  const backtracked=getBacktrackedTotal();
  const combinedBacktracked=Math.max(backtracked,other.back);
  el('backtrackedTotal').textContent=combinedBacktracked.toLocaleString();
- const initial=precise(combined-system);
+ const initial=precise(combined+adjustmentNet(code)-system);
  const remaining=precise(initial<0?initial+combinedBacktracked:initial>0?initial-combinedBacktracked:combinedBacktracked);
  const fmt=v=>(v>0?'+':'')+v.toLocaleString();
  const status=v=>v===0?'Matched':v>0?'Excess':'Short';
