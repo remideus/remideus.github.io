@@ -133,7 +133,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <section class="card">
 <div class="historyHead"><h2>Saved Inventory</h2><button id="export" type="button">Export CSV</button></div>
 <div class="actions"><button id="backupData" type="button">Export Data Backup (JSON)</button><button id="importData" type="button">Import Data Backup</button><input id="importDataFile" type="file" accept=".json,application/json" hidden></div>
-<p class="hint">Today: <strong style="color:#146b36">Green = Warehouse AND Office checked</strong>; <strong style="color:#865600">Amber = one or both locations still need checking</strong>. A saved zero count counts as checked. Check Again resets both location statuses without deleting quantities.</p>
+<p class="hint">Today: <strong style="color:#146b36">Green = saved since last recheck</strong>; <strong style="color:#865600">Amber = needs rechecking</strong>. A saved zero count counts as checked. Check Again marks the product for rechecking without deleting quantities.</p>
 <p>One saved inventory entry per date and product combines Warehouse + Office. Tap a product to load its counts. Switch locations to view or edit either side; Save Count stores the active location.</p>
 <div class="actions"><button id="recheckAllToday" type="button">↻ Check Again for All (Today)</button></div><div class="inventory-search" style="display:flex;gap:8px;align-items:center;margin:10px 0"><input id="inventorySearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" placeholder="Search saved product code" aria-label="Search saved inventory by product code" style="flex:1;min-width:0"><button id="clearInventorySearch" type="button" style="white-space:nowrap">Clear</button></div><div id="inventorySearchCount" class="hint" aria-live="polite"></div>
 <div class="inventory-nav" aria-label="Saved inventory date navigation"><button type="button" class="dateNav" data-filter="today">Today</button><button type="button" class="dateNav" data-filter="yesterday">Yesterday</button><button type="button" class="dateNav" data-filter="all">All Dates</button></div><label class="inventory-date-select">Jump to saved date<select id="inventoryDate"><option value="all">All saved dates</option></select></label><div id="history"></div>
@@ -401,7 +401,7 @@ function savedRowMetrics(row){
  const systemValues=[row.warehouse?.inputs?.systemAmount,row.office?.inputs?.systemAmount].filter(v=>v!==undefined&&v!==null&&String(v).trim()!=='');
  const hasSystem=systemValues.length>0,system=hasSystem?whole(Number(systemValues[0])||0):0;
  const back=Math.max(backtrackTotalFromInputs(row.warehouse?.inputs),backtrackTotalFromInputs(row.office?.inputs));
- const initial=precise(total-system),remaining=precise(initial<0?initial+back:initial>0?initial-back:back);
+ const initial=precise(adjusted-system),remaining=precise(initial<0?initial+back:initial>0?initial-back:back);
  const status=v=>v===0?'Matched':v>0?'Excess':'Short';
  return {warehouse,office,total,adjusted,adjustNet:adjustmentNet(row.code),hasSystem,system,back,initial,remaining,status:hasSystem?status(remaining):'—'};
 }
@@ -416,8 +416,8 @@ function updatedSinceReset(row,markers){
  const marker=Number(markers[recheckId(row.date,row.code)]||0);
  const dayMarker=Number(markers['all|'+row.date]||0);
  const resetAt=Math.max(marker,dayMarker);
- // Both locations are mandatory. A saved zero count counts as checked.
- return ['warehouse','office'].every(loc=>!!row[loc]&&(!resetAt||Number(row[loc].updatedAt||0)>resetAt));
+ // Either saved location marks the product checked after the latest reset; zero is valid.
+ return ['warehouse','office'].some(loc=>!!row[loc]&&(!resetAt||Number(row[loc].updatedAt||0)>resetAt));
 }
 el('recheckAllToday').addEventListener('click',()=>{
  const today=dateKey();const rows=combinedSavedRows().filter(row=>row.date===today);
@@ -443,12 +443,9 @@ function renderHistoryUnsafe(){
  host.innerHTML=visibleDates.filter(date=>groups[date].some(row=>String(row.code).toLowerCase().includes(inventorySearch))).map(date=>`<div class="day"><h3>${esc(displayDate(date))}</h3>${groups[date].filter(row=>String(row.code).toLowerCase().includes(inventorySearch)).map(row=>{
   const m=savedRowMetrics(row),idx=rows.indexOf(row);
   const updated=date===today && updatedSinceReset(row,markers);
-  const resetAt=Math.max(Number(markers[recheckId(row.date,row.code)]||0),Number(markers['all|'+row.date]||0));
-  const locChecked=loc=>!!row[loc]&&(!resetAt||Number(row[loc].updatedAt||0)>resetAt);
-  const checkLabel=loc=>`${loc==='warehouse'?'Warehouse':'Office'}: ${locChecked(loc)?'✓ Checked':'○ Pending'}`;
   const indicator=date===today
-    ?`<div class="update-indicator">${updated?'✓ Both locations checked':'● Incomplete / check again'}</div><div class="hint">${checkLabel('warehouse')} · ${checkLabel('office')}</div><div><button type="button" class="recheck-btn" data-index="${idx}">↻ Check again</button></div>`:'';
-  return `<div class="record ${date===today?(updated?'yesterday-updated':'yesterday-pending'):''}"><div><button type="button" class="code loadCombined"  data-index="${idx}">${esc(row.code)}</button>${indicator}<div class="hint">Warehouse: ${m.warehouse.toLocaleString()} + Office: ${m.office.toLocaleString()}</div>${m.hasSystem?`<div class="hint">System: ${m.system.toLocaleString()} · Backtracked: ${m.back.toLocaleString()} · ${m.remaining>0?'+':''}${m.remaining.toLocaleString()} ${m.status}</div>`:''}</div><div class="recordRight"><div class="amount">${m.adjusted.toLocaleString()}<div class="hint">Original: ${m.total.toLocaleString()}</div>${m.adjustNet?`<div class="hint">Adjust: ${m.adjustNet>0?'+':''}${m.adjustNet.toLocaleString()}</div>`:''}</div><button type="button" class="deleteCombined" data-index="${idx}" aria-label="Delete combined ${esc(row.code)}">−</button></div></div>`;
+    ?`<div class="update-indicator">${updated?'✓ Checked':'● Check again'}</div><div><button type="button" class="recheck-btn" data-index="${idx}">↻ Check again</button></div>`:'';
+  return `<div class="record ${date===today?(updated?'yesterday-updated':'yesterday-pending'):''}"><div><button type="button" class="code loadCombined"  data-index="${idx}">${esc(row.code)}</button>${indicator}<div class="hint">Warehouse: ${row.warehouse?m.warehouse.toLocaleString():'Not saved'} + Office: ${row.office?m.office.toLocaleString():'Not saved'}</div>${m.hasSystem?`<div class="hint">System: ${m.system.toLocaleString()} · Backtracked: ${m.back.toLocaleString()} · ${m.remaining>0?'+':''}${m.remaining.toLocaleString()} ${m.status}</div>`:''}</div><div class="recordRight"><div class="amount">${m.adjusted.toLocaleString()}</div><button type="button" class="deleteCombined" data-index="${idx}" aria-label="Delete combined ${esc(row.code)}">−</button></div></div>`;
  }).join('')}</div>`).join('') || '<div class="empty">No matching products for this search and date selection.</div>';
 }
 function loadCombinedRow(row){
@@ -456,7 +453,7 @@ function loadCombinedRow(row){
  const makeDraft=rec=>rec?.inputs?{product:row.code,inputs:Object.fromEntries(ids.map(id=>[id,rec.inputs[id]??''])),backtracks:normalizeBacktracks(rec.inputs)}:null;
  drafts.warehouse=makeDraft(row.warehouse);drafts.office=makeDraft(row.office);
  sharedProduct=row.code;
- const source=row.warehouse||row.office;
+ const source=row[activeLocation]||row.warehouse||row.office;
  const commonItems=source?.inputs?.items??'';
  const commonSystem=source?.inputs?.systemAmount??'';
  // Older saved records may have backtracks on one location only.
@@ -468,8 +465,22 @@ function loadCombinedRow(row){
   drafts[loc].inputs.items=commonItems;
   drafts[loc].inputs.systemAmount=commonSystem;
  }
+ // Load the actual saved location, not a fabricated empty location.
+ // The other saved location stays in its own draft and can be inspected with its toggle.
+ if(!row[activeLocation] && row[activeLocation==='warehouse'?'office':'warehouse']){
+  activeLocation=activeLocation==='warehouse'?'office':'warehouse';
+ }
  restoreDraft(drafts[activeLocation]);
- el('status').textContent=`Loaded ${row.code}. Shared product details and backtracked entries are available in both locations.`;
+ for(const loc of ['warehouse','office']){
+  const btn=el(loc==='warehouse'?'locWarehouse':'locOffice');
+  btn.setAttribute('aria-pressed',String(loc===activeLocation));
+  btn.style.background=loc===activeLocation?'#111':'#fff';
+  btn.style.color=loc===activeLocation?'#fff':'#111';
+ }
+ el('locationHint').textContent=`${activeLocation==='office'?'Office':'Warehouse'} counts and saved inventory.`;
+ const warehouseInfo=row.warehouse?Number(row.warehouse.amount).toLocaleString()+' saved':'NOT SAVED';
+ const officeInfo=row.office?Number(row.office.amount).toLocaleString()+' saved':'NOT SAVED';
+ el('status').textContent=`Loaded ${row.code} (${row.date}). Warehouse: ${warehouseInfo}; Office: ${officeInfo}. Showing ${activeLocation}. Tap the other location to inspect its saved inputs.`;
  window.scrollTo({top:0,behavior:'smooth'});
 }
 el('history').addEventListener('click',e=>{
