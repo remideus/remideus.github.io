@@ -130,6 +130,14 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <div class="actions"><button id="save" type="button">SAVE COUNT</button><button id="clear" type="button">Clear</button></div>
 <div class="status" id="status" aria-live="polite"></div>
 
+<section class="card" id="dailyWorkingCard">
+<h2>Today's Stock Working — Copy Report</h2>
+<p>Generate a WhatsApp-ready report from today's saved Warehouse and Office counts. This is a read-only report: it never changes stock quantities. Enter optional product names or location notes below; they are saved separately.</p>
+<div class="actions"><button id="generateWorking" type="button">Generate Today's Report</button><button id="copyWorking" type="button">Copy Report</button></div>
+<div id="workingEditor" class="lookup"></div>
+<label>Report text (editable before copying)<textarea id="workingOutput" rows="12" style="width:100%;margin-top:6px;padding:10px;font:14px/1.5 monospace;white-space:pre-wrap;border:1px solid #999;border-radius:10px" spellcheck="false" placeholder="Save today's stock counts, then generate a report."></textarea></label>
+<div class="hint" id="workingStatus" aria-live="polite"></div>
+</section>
 <section class="card">
 <div class="historyHead"><h2>Saved Inventory</h2><button id="export" type="button">Export CSV</button></div>
 <div class="actions"><button id="backupData" type="button">Export Data Backup (JSON)</button><button id="importData" type="button">Import Data Backup</button><input id="importDataFile" type="file" accept=".json,application/json" hidden></div>
@@ -564,7 +572,8 @@ el('export').addEventListener('click',()=>{
 });
 // Portable full-data backup (not the summary-only CSV). Includes inventory, POs,
 // carton/box settings and price tag changes; only the app's own keys are touched.
-const BACKUP_KEYS=[RECHECK_KEY,ADJUST_KEY,KEY,'palletCounterCustomDimensionsV1','palletCounterCustomPricesV1','palletCounterSavedCartonBoxV1','palletCounterPickingPOsV1'];
+const WORKING_KEY='palletCounterWorkingLabelsV1';
+const BACKUP_KEYS=[WORKING_KEY,RECHECK_KEY,ADJUST_KEY,KEY,'palletCounterCustomDimensionsV1','palletCounterCustomPricesV1','palletCounterSavedCartonBoxV1','palletCounterPickingPOsV1'];
 function downloadBackup(){
  const data={format:'pallet-counter-backup',version:1,exportedAt:new Date().toISOString(),stores:{}};
  BACKUP_KEYS.forEach(key=>{const value=localStorage.getItem(key);if(value!==null)data.stores[key]=JSON.parse(value)});
@@ -713,6 +722,80 @@ pc('priceSave').addEventListener('click',()=>{const code=pc('priceCode').value.t
 pc('priceNew').addEventListener('click',()=>{selectedPrice='';for(const id of ['priceCode','priceName','priceValue','priceBarcode'])pc(id).value='';pc('priceStatus').textContent='Enter details for a new product.'});
 pc('priceReset').addEventListener('click',()=>{if(!selectedPrice){pc('priceStatus').textContent='Select a product first.';return}delete priceOverrides[selectedPrice];writeStore(PRICE_KEY,priceOverrides);const orig=priceOriginal.get(selectedPrice);if(orig)priceSelect(orig);else pc('priceNew').click();pc('priceStatus').textContent='Original restored (or custom product removed).';pcLookup()});
 pcLookup();
+
+// Today's report is derived from saved physical counts; no count writes occur here.
+function workingLabels(){
+ const raw=localStorage.getItem(WORKING_KEY);
+ if(raw===null)return {};
+ const obj=JSON.parse(raw);
+ if(!obj||typeof obj!=='object'||Array.isArray(obj))throw new Error('Working labels data is invalid');
+ return obj;
+}
+function workingKey(code){return String(code).trim().toLowerCase()}
+function workingTerm(rec){
+ if(!rec)return null;
+ const i=rec.inputs||{};
+ const n=x=>Number(x)||0;
+ const last=Math.max(0,precise(n(i.lw)*n(i.ll)*Math.trunc(n(i.lh))+Math.trunc(n(i.extra))));
+ const full=precise(Math.trunc(n(i.fp))*n(i.fw)*n(i.fl)*Math.trunc(n(i.fh)));
+ const boxes=precise(last+full),per=Math.trunc(n(i.items)),partial=Math.trunc(n(i.looseQty))*Math.trunc(n(i.looseEach));
+ const calculated=precise(boxes*per+partial),saved=Number(rec.amount)||0;
+ if(Math.abs(calculated-saved)>0.001)return `${saved.toLocaleString('en-SG')} (saved; layout details differ)`;
+ if(!per)return `${saved.toLocaleString('en-SG')} (saved)`;
+ const parts=[`${boxes.toLocaleString('en-SG')}x${per.toLocaleString('en-SG')}`];
+ if(partial)parts.push(i.looseEach&&Number(i.looseEach)!==1?`${Math.trunc(n(i.looseQty))}x${Math.trunc(n(i.looseEach))}`:String(partial));
+ return parts.join('+');
+}
+function reportDate(d=new Date()){return `${d.getDate()} ${d.toLocaleDateString('en-GB',{month:'short'})}`}
+function workingReport(){
+ const rows=combinedSavedRows().filter(x=>x.date===dateKey());
+ const labels=workingLabels(),fmt=n=>Number(n).toLocaleString('en-SG');
+ const lines=[`Infinity Stock Record ${reportDate()}`,''];
+ for(const row of rows){
+  const meta=labels[workingKey(row.code)]||{},name=String(meta.name||'').trim(),note=String(meta.note||'').trim();
+  lines.push(`${row.code}${name?' '+name:''}`);
+  const wh=workingTerm(row.warehouse),office=workingTerm(row.office);
+  if(wh!==null&&office!==null){
+   lines.push(`= Warehouse: ${wh} = ${fmt(row.warehouse.amount)}`);
+   lines.push(`= Office: ${office} = ${fmt(row.office.amount)}`);
+   lines.push(`= ${fmt((Number(row.warehouse.amount)||0)+(Number(row.office.amount)||0))} combined`);
+  }else if(wh!==null)lines.push(`= ${wh} = ${fmt(row.warehouse.amount)} (wh)`);
+  else if(office!==null)lines.push(`= ${office} = ${fmt(row.office.amount)} (office)`);
+  const net=adjustmentNet(row.code);
+  if(net)lines.push(`= ${fmt((Number(row.warehouse?.amount)||0)+(Number(row.office?.amount)||0))}${net>0?'+':'−'}${fmt(Math.abs(net))} = ${fmt(savedRowMetrics(row).adjusted)} (stock adjustment)`);
+  if(note)lines.push(note);
+  lines.push('');
+ }
+ return {rows,labels,text:lines.join('\n').trimEnd()};
+}
+function generateWorkingReport(){
+ try{
+  const {rows,labels,text}=workingReport();
+  el('workingOutput').value=text;
+  el('workingEditor').innerHTML=rows.map(row=>{
+   const key=workingKey(row.code),meta=labels[key]||{};
+   return `<div class="record" style="display:block"><strong>${esc(row.code)}</strong><label>Product name<input class="workingName" data-code="${esc(row.code)}" type="text" value="${esc(meta.name||'')}" placeholder="Optional name"></label><label>Source / location note<input class="workingNote" data-code="${esc(row.code)}" type="text" value="${esc(meta.note||'')}" placeholder="e.g. 36 in wh / at 03-28"></label></div>`;
+  }).join('')||'<div class="hint">No saved products for today.</div>';
+  el('workingStatus').textContent=`Generated ${rows.length} product entries for today. Add names/notes if needed; changes save automatically and regenerate the report.`;
+ }catch(e){el('workingStatus').textContent='Report error: '+e.message}
+}
+el('generateWorking').addEventListener('click',generateWorkingReport);
+el('workingEditor').addEventListener('change',e=>{
+ if(!e.target.matches('.workingName,.workingNote'))return;
+ try{
+  const labels=workingLabels(),key=workingKey(e.target.dataset.code);
+  labels[key]??={};
+  labels[key][e.target.classList.contains('workingName')?'name':'note']=e.target.value;
+  localStorage.setItem(WORKING_KEY,JSON.stringify(labels));
+  generateWorkingReport();
+ }catch(err){el('workingStatus').textContent='Cannot save report details: '+err.message}
+});
+el('copyWorking').addEventListener('click',async()=>{
+ const text=el('workingOutput').value;
+ if(!text.trim()){el('workingStatus').textContent='Generate the report first.';return}
+ try{await navigator.clipboard.writeText(text);el('workingStatus').textContent='Report copied.'}
+ catch(e){el('workingOutput').focus();el('workingOutput').select();el('workingStatus').textContent='Clipboard permission unavailable. Select and copy the highlighted report.'}
+});
 </script>
 </body>
 </html>
