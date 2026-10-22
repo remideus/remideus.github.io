@@ -132,11 +132,10 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 
 <section class="card" id="dailyWorkingCard">
 <h2>Stock Working — Copy Report</h2>
-<p>Generate a WhatsApp-ready report from today's counts or a selected saved date. This is a read-only report and never changes stock quantities. Optional product names and location notes are saved separately.</p>
+<p>Generate a WhatsApp-ready report from today's counts or a selected saved date. This is a read-only report and never changes stock quantities. The generated report can be edited directly in the report text box before copying.</p>
 <label>Report period<select id="workingPeriod"><option value="today">Today</option><option value="selected">Selected date</option></select></label>
 <label id="workingDateWrap" style="display:none">Select saved date<select id="workingDate"></select></label>
 <div class="actions"><button id="generateWorking" type="button">Generate Report</button><button id="copyWorking" type="button">Copy Report</button></div>
-<div id="workingEditor" class="lookup"></div>
 <label>Report text (editable before copying)<textarea id="workingOutput" rows="12" style="width:100%;margin-top:6px;padding:10px;font:14px/1.5 monospace;white-space:pre-wrap;border:1px solid #999;border-radius:10px" spellcheck="false" placeholder="Save today's stock counts, then generate a report."></textarea></label>
 <div class="hint" id="workingStatus" aria-live="polite"></div>
 </section>
@@ -806,11 +805,7 @@ function generateWorkingReport(){
   refreshWorkingDates();
   const {rows,labels,text}=workingReport();
   el('workingOutput').value=text;
-  el('workingEditor').innerHTML=rows.map(row=>{
-   const key=workingKey(row.code),meta=labels[key]||{};
-   return `<div class="record" style="display:block"><strong>${esc(row.code)}</strong><label>Product name<input class="workingName" data-code="${esc(row.code)}" type="text" value="${esc(meta.name||'')}" placeholder="Optional name"></label><label>Source / location note<input class="workingNote" data-code="${esc(row.code)}" type="text" value="${esc(meta.note||'')}" placeholder="e.g. 36 in wh / at 03-28"></label></div>`;
-  }).join('')||'<div class="hint">No saved products for today.</div>';
-  el('workingStatus').textContent=`Generated ${rows.length} product entries for ${selectedWorkingDate()||'selected date'}. Add names/notes if needed; changes save automatically and regenerate the report.`;
+  el('workingStatus').textContent=`Generated ${rows.length} product entries for ${selectedWorkingDate()||'selected date'}. Edit the report text below if needed, then tap Copy Report.`;
  }catch(e){el('workingStatus').textContent='Report error: '+e.message}
 }
 el('workingPeriod').addEventListener('change',()=>{
@@ -821,16 +816,6 @@ el('workingPeriod').addEventListener('change',()=>{
 });
 el('workingDate').addEventListener('change',generateWorkingReport);
 el('generateWorking').addEventListener('click',generateWorkingReport);
-el('workingEditor').addEventListener('change',e=>{
- if(!e.target.matches('.workingName,.workingNote'))return;
- try{
-  const labels=workingLabels(),key=workingKey(e.target.dataset.code);
-  labels[key]??={};
-  labels[key][e.target.classList.contains('workingName')?'name':'note']=e.target.value;
-  localStorage.setItem(WORKING_KEY,JSON.stringify(labels));
-  generateWorkingReport();
- }catch(err){el('workingStatus').textContent='Cannot save report details: '+err.message}
-});
 el('copyWorking').addEventListener('click',async()=>{
  const text=el('workingOutput').value;
  if(!text.trim()){el('workingStatus').textContent='Generate the report first.';return}
