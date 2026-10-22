@@ -15,3 +15,5 @@ V21: Saving clears the product and all inputs. Office/Warehouse toggle always st
 Version 25: confirmed zero-item counts can be saved for Office or Warehouse.
 
 Version 33: Separate reversible stock-adjustment ledger per product. Original physical counts preserved; adjusted stock displayed in calculator and Saved Inventory. JSON backup includes palletCounterStockAdjustmentsV1. Reversals retain audit history. Backtracked reconciliation remains independent.
+
+v43: Unified Notes; legacy reconciliation entries copied once to reference-only Notes; system stock difference shows shortages without modifying counts.

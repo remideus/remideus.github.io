@@ -101,39 +101,41 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 </div>
 <div class="total"><div>COMBINED PHYSICAL COUNT</div><div class="num" id="combinedTotal">0</div></div>
 <div class="hint" id="combinedHint"></div>
-<p class="hint">Combined Physical Count includes active stock adjustments. Warehouse and Office counts remain unchanged. Removing an adjustment restores its effect automatically.</p>
+<p class="hint">Combined Physical Count includes active Add and Deduct movements from Notes. Reference-only notes do not change stock.</p>
 </section>
-<section class="card" id="stockAdjustmentCard"><h2>Stock Adjustments</h2><p>Add or deduct pieces, boxes, or cartons for the selected product. Notes are required. Tap Remove beside an entry to undo its effect on the total, just like Backtracked Entries. Removed entries disappear from the list immediately.</p>
-<div class="grid2"><label>Action<select id="adjustAction"><option value="minus">Deduct (−)</option><option value="plus">Add (+)</option></select></label><label>Quantity<input id="adjustQty" type="number" inputmode="numeric" min="1" step="1" placeholder="20"></label></div>
+<section class="card" id="stockAdjustmentCard"><h2>Notes</h2><p><strong>Deduct (−)</strong> and <strong>Add (+)</strong> change Combined Physical Count. <strong>Note</strong> records information without changing stock. Previous stock adjustments and reconciliation entries appear together below.</p>
+<div class="grid2"><label>Action<select id="adjustAction"><option value="minus">Deduct (−)</option><option value="plus">Add (+)</option><option value="note">Note (no stock change)</option></select></label><label>Quantity<input id="adjustQty" type="number" inputmode="numeric" min="1" step="1" placeholder="20"></label></div>
 <div class="grid2"><label>Unit<select id="adjustUnit"><option value="cartons">Cartons</option><option value="boxes">Boxes</option><option value="pieces">Pieces</option></select></label><label>Pieces per carton / box<input id="adjustEach" type="number" inputmode="numeric" min="1" step="1" placeholder="12"></label></div>
 <label>Where / why (required)<input id="adjustNote" type="text" maxlength="200" placeholder="e.g. Enterprise"></label>
-<div class="actions"><button id="addAdjustment" type="button">Save Adjustment</button></div><div class="hint" id="adjustMessage" aria-live="polite"></div><div id="adjustmentEntries"></div>
-</section>
-<section class="card">
-<h2>Stock Reconciliation</h2>
-<p>Compare the combined Office + Warehouse physical stock with the system amount. Add multiple backtracked quantities with notes to explain where each adjustment came from. Enter positive quantities only; the total adjusts the difference and can pass zero.</p>
-<label>System Amount<input id="systemAmount" type="number" inputmode="numeric" min="0" placeholder="e.g. 2000"></label>
-<div class="hint" style="margin-top:12px"><strong>Backtracked Entries</strong> · Saved entries remain when you recount. Load a saved product to edit or remove them.</div>
+<div class="actions"><button id="addAdjustment" type="button">Save Note / Movement</button></div><div class="hint" id="adjustMessage" aria-live="polite"></div><div id="adjustmentEntries"></div>
+<div style="margin-top:14px;border-top:1px solid #ddd;padding-top:14px"><h3>System Stock Check</h3><p class="hint">Compare the system quantity with the adjusted Combined Physical Count. Notes do not affect the count.</p><label>System Amount<input id="systemAmount" type="number" inputmode="numeric" min="0" step="1" placeholder="Enter system stock quantity"></label><div class="box" style="margin-top:10px"><div>Difference (Combined − System)</div><div class="num" id="systemDifference">—</div><div id="systemDifferenceStatus" class="hint">Enter a system amount to check stock.</div></div></div>
+<div id="legacyReconciliation" style="display:none">
+<h3>Previous Stock Reconciliation Notes</h3>
+<p class="hint">Previous backtracked entries are preserved and do not change Combined Physical Count. Load a saved product to view or edit its historical notes.</p>
+
+<div class="hint" style="margin-top:12px"><strong>Previous entries</strong> · Saved entries remain when you recount. Load a saved product to edit or remove them.</div>
 <div class="grid2">
 <label>Quantity<input id="backtrackQty" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g. 40"></label>
 <label>Note / Source<input id="backtrackNote" type="text" placeholder="e.g. returned stock / outlet"></label>
 </div>
 <div class="actions"><button id="addBacktrack" type="button">Add Backtracked Entry</button><button id="clearBacktrack" type="button">Clear Entries</button></div>
 <div id="backtrackEntries" aria-live="polite"></div>
-<div class="box" style="margin-top:12px"><div>Combined Backtracked Amount (Office + Warehouse)</div><div class="num" id="backtrackedTotal">0</div></div>
-<div class="results" style="margin-top:12px">
+<div class="box" style="display:none;margin-top:12px"><div>Combined Backtracked Amount (Office + Warehouse)</div><div class="num" id="backtrackedTotal">0</div></div>
+<div class="results" style="display:none;margin-top:12px">
 <div class="box"><div>Initial Difference</div><div class="num" id="initialDifference">—</div><div id="initialStatus" class="hint"></div></div>
 <div class="box"><div>Remaining Difference</div><div class="num" id="remainingDifference">—</div><div id="remainingStatus" class="hint"></div></div>
 </div>
-<p style="margin-top:10px">Remaining Difference = Initial Difference adjusted by the Backtracked Amount (may pass zero). Backtracking adjusts the reconciliation difference; it does not change the physical count.</p>
+</div>
 </section>
 <div class="actions"><button id="save" type="button">SAVE COUNT</button><button id="clear" type="button">Clear</button></div>
 <div class="status" id="status" aria-live="polite"></div>
 
 <section class="card" id="dailyWorkingCard">
-<h2>Today's Stock Working — Copy Report</h2>
-<p>Generate a WhatsApp-ready report from today's saved Warehouse and Office counts. This is a read-only report: it never changes stock quantities. Enter optional product names or location notes below; they are saved separately.</p>
-<div class="actions"><button id="generateWorking" type="button">Generate Today's Report</button><button id="copyWorking" type="button">Copy Report</button></div>
+<h2>Stock Working — Copy Report</h2>
+<p>Generate a WhatsApp-ready report from today's counts or a selected saved date. This is a read-only report and never changes stock quantities. Optional product names and location notes are saved separately.</p>
+<label>Report period<select id="workingPeriod"><option value="today">Today</option><option value="selected">Selected date</option></select></label>
+<label id="workingDateWrap" style="display:none">Select saved date<select id="workingDate"></select></label>
+<div class="actions"><button id="generateWorking" type="button">Generate Report</button><button id="copyWorking" type="button">Copy Report</button></div>
 <div id="workingEditor" class="lookup"></div>
 <label>Report text (editable before copying)<textarea id="workingOutput" rows="12" style="width:100%;margin-top:6px;padding:10px;font:14px/1.5 monospace;white-space:pre-wrap;border:1px solid #999;border-radius:10px" spellcheck="false" placeholder="Save today's stock counts, then generate a report."></textarea></label>
 <div class="hint" id="workingStatus" aria-live="polite"></div>
@@ -304,16 +306,35 @@ function getAdjustments(){
  const raw=localStorage.getItem(ADJUST_KEY);if(raw===null)return {};
  let data;try{data=JSON.parse(raw)}catch(e){throw new Error('Stock adjustment ledger is corrupted; restore a JSON backup before editing.')}
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Stock adjustment ledger is invalid.');
- for(const entries of Object.values(data))if(!Array.isArray(entries)||entries.some(x=>!x||!Number.isSafeInteger(x.pieces)||x.pieces<=0||!['plus','minus'].includes(x.action)||typeof x.note!=='string'||typeof x.id!=='string'||typeof x.active!=='boolean'))throw new Error('Stock adjustment entries are invalid.');
+ for(const entries of Object.values(data))if(!Array.isArray(entries)||entries.some(x=>!x||!Number.isSafeInteger(x.pieces)||x.pieces<=0||!['plus','minus','note'].includes(x.action)||typeof x.note!=='string'||typeof x.id!=='string'||typeof x.active!=='boolean'))throw new Error('Stock adjustment entries are invalid.');
  return data;
 }
 function adjustmentEntries(code){return getAdjustments()[adjustCode(code)]||[]}
-function adjustmentNet(code){return adjustmentEntries(code).filter(x=>x.active).reduce((n,x)=>n+(x.action==='plus'?x.pieces:-x.pieces),0)}
+function adjustmentNet(code){return adjustmentEntries(code).filter(x=>x.active).reduce((n,x)=>n+(x.action==='plus'?x.pieces:x.action==='minus'?-x.pieces:0),0)}
+function migratePreviousReconciliationNotes(code){
+ // Preserve legacy inventory inputs. Copy distinct old backtracked entries to Notes once.
+ // Mark each imported record by date/product/entry occurrence so reloading cannot duplicate it.
+ if(!code)return;
+ const records=getRecords(),ledger=getAdjustments(),key=adjustCode(code);
+ const dates=[...new Set(records.filter(r=>adjustCode(r.code)===key).map(r=>r.date))];
+ let changed=false;
+ for(const day of dates){
+  const entries=savedBacktracksForProduct(records,code,day);
+  entries.forEach((x,i)=>{
+   const id=`legacy-backtrack|${day}|${key}|${i}`;
+   if((ledger[key]||[]).some(y=>y.id===id))return;
+   (ledger[key]??=[]).push({id,action:'note',qty:x.qty,unit:'pieces',each:1,pieces:x.qty,note:`Stock reconciliation (${day}): ${x.note||'Previous backtracked entry'}`,active:true,createdAt:`${day}T00:00:00`,legacy:true});
+   changed=true;
+  });
+ }
+ if(changed)localStorage.setItem(ADJUST_KEY,JSON.stringify(ledger));
+}
 function adjustmentDisplay(code,original){
+ if(code)migratePreviousReconciliationNotes(code);
  const entries=code?adjustmentEntries(code):[],net=code?adjustmentNet(code):0;
  const active=entries.filter(x=>x.active);
  el('combinedTotal').textContent=(original+net).toLocaleString();
- const activeHtml=active.map(x=>`<div class="record"><div><strong>${x.action==='minus'?'−':'+'}${x.pieces.toLocaleString()} pieces</strong><div class="hint">${esc(x.qty)} ${esc(x.unit)} × ${esc(x.each)} · ${esc(x.note)}</div></div><button type="button" class="reverseAdjustment" data-id="${esc(x.id)}" style="font-size:13px;min-height:42px">Remove</button></div>`).join('');
+ const activeHtml=active.map(x=>`<div class="record"><div><strong>${x.action==='note'?'Note: ':x.action==='minus'?'−':'+'}${x.pieces.toLocaleString()} pieces</strong><div class="hint">${esc(x.qty)} ${esc(x.unit)} × ${esc(x.each)} · ${esc(x.note)}</div></div><button type="button" class="reverseAdjustment" data-id="${esc(x.id)}" style="font-size:13px;min-height:42px">Remove</button></div>`).join('');
  el('adjustmentEntries').innerHTML=(activeHtml||'<div class="hint">No active stock adjustments for this product.</div>');
 }
 
@@ -325,10 +346,10 @@ el('addAdjustment').addEventListener('click',()=>{
  if(!Number.isSafeInteger(qty)||qty<=0||!Number.isSafeInteger(each)||each<=0||!Number.isSafeInteger(qty*each))throw new Error('Enter valid positive whole-number quantities and pieces per unit.');
  if(!note)throw new Error('Enter a note explaining the movement.');
  const pieces=qty*each,ledger=getAdjustments(),key=adjustCode(code),now=new Date().toISOString();
- const current=(ledger[key]||[]).filter(x=>x.active).reduce((sum,x)=>sum+(x.action==='plus'?x.pieces:-x.pieces),0);
+ const current=(ledger[key]||[]).filter(x=>x.active).reduce((sum,x)=>sum+(x.action==='plus'?x.pieces:x.action==='minus'?-x.pieces:0),0);
  const original=(Number(el('warehouseTotal').textContent.replace(/,/g,''))||0)+(Number(el('officeTotal').textContent.replace(/,/g,''))||0);
  if(action==='minus'&&original+current-pieces<0&&!confirm('This deduction makes the adjusted stock negative. Continue?'))return;
- if(!confirm(`${action==='minus'?'Deduct':'Add'} ${pieces.toLocaleString()} pieces for ${code}?\nNote: ${note}`))return;
+ if(!confirm(`${action==='note'?'Record note for':action==='minus'?'Deduct':'Add'} ${pieces.toLocaleString()} pieces for ${code}?\nNote: ${note}`))return;
  (ledger[key]??=[]).push({id:now+'-'+Math.random().toString(36).slice(2),action,qty,unit,each,pieces,note,active:true,createdAt:now});
  localStorage.setItem(ADJUST_KEY,JSON.stringify(ledger));
  if(JSON.stringify(getAdjustments()[key])!==JSON.stringify(ledger[key]))throw new Error('Adjustment save verification failed.');
@@ -339,12 +360,13 @@ el('adjustmentEntries').addEventListener('click',e=>{
  const button=e.target.closest('.reverseAdjustment');if(!button)return;
  try{const code=el('product').value.trim(),ledger=getAdjustments(),entry=(ledger[adjustCode(code)]||[]).find(x=>x.id===button.dataset.id&&x.active);
  if(!entry)return;
- if(!confirm(`Remove ${entry.action==='minus'?'deduction':'addition'} of ${entry.pieces.toLocaleString()} pieces (${entry.note})? ${entry.action==='minus'?'The deducted amount will be added back to the adjusted total.':'The added amount will be subtracted from the adjusted total.'}`))return;
+ if(!confirm(`Remove ${entry.action==='note'?'note':entry.action==='minus'?'deduction':'addition'} of ${entry.pieces.toLocaleString()} pieces (${entry.note})? ${entry.action==='note'?'This note has no stock effect.':entry.action==='minus'?'The deducted amount will be added back to the adjusted total.':'The added amount will be subtracted from the adjusted total.'}`))return;
  entry.active=false;entry.reversedAt=new Date().toISOString();localStorage.setItem(ADJUST_KEY,JSON.stringify(ledger));
  if(getAdjustments()[adjustCode(code)].find(x=>x.id===entry.id)?.active!==false)throw new Error('Reversal verification failed.');
  calc();renderHistory();el('adjustMessage').textContent='Adjustment removed. Adjusted total recalculated.';
  }catch(err){el('adjustMessage').textContent='Cannot reverse: '+err.message}
 });
+el('systemAmount').addEventListener('input',()=>{calc()});
 function calc(){
  const last=Math.max(0,precise(decimal(num('lw'))*decimal(num('ll'))*whole(num('lh'))+Math.trunc(num('extra'))));
  const full=precise(whole(num('fp'))*decimal(num('fw'))*decimal(num('fl'))*whole(num('fh')));
@@ -372,6 +394,8 @@ function calc(){
  const remaining=precise(initial<0?initial+combinedBacktracked:initial>0?initial-combinedBacktracked:combinedBacktracked);
  const fmt=v=>(v>0?'+':'')+v.toLocaleString();
  const status=v=>v===0?'Matched':v>0?'Excess':'Short';
+ el('systemDifference').textContent=hasSystem?fmt(initial):'—';
+ el('systemDifferenceStatus').textContent=hasSystem?(initial<0?`${Math.abs(initial).toLocaleString()} pieces SHORT`:initial>0?`${initial.toLocaleString()} pieces EXCESS`:'Matched — no shortage'):'Enter a system amount to check stock.';
  el('initialDifference').textContent=hasSystem?fmt(initial):'—';
  el('remainingDifference').textContent=hasSystem?`${fmt(remaining)} ${status(remaining)}`:'—';
  el('initialStatus').textContent=hasSystem?status(initial):'Enter system amount';
@@ -409,7 +433,7 @@ function savedRowMetrics(row){
  const systemValues=[row.warehouse?.inputs?.systemAmount,row.office?.inputs?.systemAmount].filter(v=>v!==undefined&&v!==null&&String(v).trim()!=='');
  const hasSystem=systemValues.length>0,system=hasSystem?whole(Number(systemValues[0])||0):0;
  const back=Math.max(backtrackTotalFromInputs(row.warehouse?.inputs),backtrackTotalFromInputs(row.office?.inputs));
- const initial=precise(adjusted-system),remaining=precise(initial<0?initial+back:initial>0?initial-back:back);
+ const initial=precise(adjusted-system),remaining=initial;
  const status=v=>v===0?'Matched':v>0?'Excess':'Short';
  return {warehouse,office,total,adjusted,adjustNet:adjustmentNet(row.code),hasSystem,system,back,initial,remaining,status:hasSystem?status(remaining):'—'};
 }
@@ -445,7 +469,7 @@ function renderHistoryUnsafe(){
  const rows=combinedSavedRows(),host=el('history');
  if(!rows.length){host.innerHTML='<div class="empty">No saved inventory yet.</div>';el('inventorySearchCount').textContent='';updateDateNavigation({});return}
  const groups={};rows.forEach(row=>(groups[row.date]??=[]).push(row));
- const today=dateKey(),markers=getRechecks();updateDateNavigation(groups);const visibleDates=Object.keys(groups).sort().reverse().filter(date=>inventoryFilter==='all'||date===(inventoryFilter==='today'?today:inventoryFilter==='yesterday'?yesterdayKey:inventoryFilter));
+ const today=dateKey(),yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);const yesterdayKey=dateKey(yesterday),markers=getRechecks();updateDateNavigation(groups);const visibleDates=Object.keys(groups).sort().reverse().filter(date=>inventoryFilter==='all'||date===(inventoryFilter==='today'?today:inventoryFilter==='yesterday'?yesterdayKey:inventoryFilter));
  const matchingRows=visibleDates.reduce((count,date)=>count+groups[date].filter(row=>String(row.code).toLowerCase().includes(inventorySearch)).length,0);
  el('inventorySearchCount').textContent=inventorySearch?`${matchingRows} matching saved ${matchingRows===1?'record':'records'}`:'';
  host.innerHTML=visibleDates.filter(date=>groups[date].some(row=>String(row.code).toLowerCase().includes(inventorySearch))).map(date=>`<div class="day"><h3>${esc(displayDate(date))}</h3>${groups[date].filter(row=>String(row.code).toLowerCase().includes(inventorySearch)).map(row=>{
@@ -453,7 +477,7 @@ function renderHistoryUnsafe(){
   const updated=date===today && updatedSinceReset(row,markers);
   const indicator=date===today
     ?`<div class="update-indicator">${updated?'✓ Checked':'● Check again'}</div><div><button type="button" class="recheck-btn" data-index="${idx}">↻ Check again</button></div>`:'';
-  return `<div class="record ${date===today?(updated?'yesterday-updated':'yesterday-pending'):''}"><div><button type="button" class="code loadCombined"  data-index="${idx}">${esc(row.code)}</button>${indicator}<div class="hint">Warehouse: ${row.warehouse?m.warehouse.toLocaleString():'Not saved'} + Office: ${row.office?m.office.toLocaleString():'Not saved'}</div>${m.hasSystem?`<div class="hint">System: ${m.system.toLocaleString()} · Backtracked: ${m.back.toLocaleString()} · ${m.remaining>0?'+':''}${m.remaining.toLocaleString()} ${m.status}</div>`:''}</div><div class="recordRight"><div class="amount">${m.adjusted.toLocaleString()}</div><button type="button" class="deleteCombined" data-index="${idx}" aria-label="Delete combined ${esc(row.code)}">−</button></div></div>`;
+  return `<div class="record ${date===today?(updated?'yesterday-updated':'yesterday-pending'):''}"><div><button type="button" class="code loadCombined"  data-index="${idx}">${esc(row.code)}</button>${indicator}<div class="hint">Warehouse: ${row.warehouse?m.warehouse.toLocaleString():'Not saved'} + Office: ${row.office?m.office.toLocaleString():'Not saved'}</div>${m.hasSystem?`<div class="hint">System: ${m.system.toLocaleString()} · ${m.initial<0?Math.abs(m.initial).toLocaleString()+' Short':m.initial>0?m.initial.toLocaleString()+' Excess':'Matched'}</div>`:''}</div><div class="recordRight"><div class="amount">${m.adjusted.toLocaleString()}</div><button type="button" class="deleteCombined" data-index="${idx}" aria-label="Delete combined ${esc(row.code)}">−</button></div></div>`;
  }).join('')}</div>`).join('') || '<div class="empty">No matching products for this search and date selection.</div>';
 }
 function loadCombinedRow(row){
@@ -597,7 +621,7 @@ el('importDataFile').addEventListener('change',async e=>{
   if(!Object.keys(stores).length)throw new Error('Backup contains no data.');
   if(KEY in stores && (!Array.isArray(stores[KEY])||stores[KEY].some(r=>!r||typeof r!=='object'||typeof r.date!=='string'||typeof r.code!=='string'||!Number.isFinite(Number(r.amount)))))
    throw new Error('Invalid inventory records.');
-  if(ADJUST_KEY in stores){const entries=stores[ADJUST_KEY];if(!entries||typeof entries!=='object'||Array.isArray(entries)||Object.values(entries).some(a=>!Array.isArray(a)||a.some(x=>!x||!Number.isSafeInteger(x.pieces)||x.pieces<=0||!['plus','minus'].includes(x.action)||typeof x.note!=='string'||typeof x.id!=='string'||typeof x.active!=='boolean')))throw new Error('Invalid stock adjustments in backup.')}
+  if(ADJUST_KEY in stores){const entries=stores[ADJUST_KEY];if(!entries||typeof entries!=='object'||Array.isArray(entries)||Object.values(entries).some(a=>!Array.isArray(a)||a.some(x=>!x||!Number.isSafeInteger(x.pieces)||x.pieces<=0||!['plus','minus','note'].includes(x.action)||typeof x.note!=='string'||typeof x.id!=='string'||typeof x.active!=='boolean')))throw new Error('Invalid stock adjustments in backup.')}
   for(const key of BACKUP_KEYS.filter(k=>k!==KEY)){
    if(key in stores && (!stores[key]||typeof stores[key]!=='object'||Array.isArray(stores[key])))
     throw new Error('Invalid saved settings: '+key);
@@ -747,10 +771,19 @@ function workingTerm(rec){
  return parts.join('+');
 }
 function reportDate(d=new Date()){return `${d.getDate()} ${d.toLocaleDateString('en-GB',{month:'short'})}`}
+function selectedWorkingDate(){return el('workingPeriod').value==='selected'?el('workingDate').value:dateKey()}
+function refreshWorkingDates(){
+ const dates=[...new Set(combinedSavedRows().map(row=>row.date))].sort().reverse();
+ const select=el('workingDate'),old=select.value;
+ select.innerHTML=dates.map(d=>`<option value="${d}">${displayDate(d)}</option>`).join('');
+ if(dates.includes(old))select.value=old;
+ if(!dates.length)select.innerHTML='<option value="">No saved dates</option>';
+}
 function workingReport(){
- const rows=combinedSavedRows().filter(x=>x.date===dateKey());
+ const selected=selectedWorkingDate();
+ const rows=combinedSavedRows().filter(x=>x.date===selected);
  const labels=workingLabels(),fmt=n=>Number(n).toLocaleString('en-SG');
- const lines=[`Infinity Stock Record ${reportDate()}`,''];
+ const lines=[`Infinity Stock Record ${selected?reportDate(new Date(selected+'T12:00:00')):reportDate()}`,''];
  for(const row of rows){
   const meta=labels[workingKey(row.code)]||{},name=String(meta.name||'').trim(),note=String(meta.note||'').trim();
   lines.push(`${row.code}${name?' '+name:''}`);
@@ -770,15 +803,23 @@ function workingReport(){
 }
 function generateWorkingReport(){
  try{
+  refreshWorkingDates();
   const {rows,labels,text}=workingReport();
   el('workingOutput').value=text;
   el('workingEditor').innerHTML=rows.map(row=>{
    const key=workingKey(row.code),meta=labels[key]||{};
    return `<div class="record" style="display:block"><strong>${esc(row.code)}</strong><label>Product name<input class="workingName" data-code="${esc(row.code)}" type="text" value="${esc(meta.name||'')}" placeholder="Optional name"></label><label>Source / location note<input class="workingNote" data-code="${esc(row.code)}" type="text" value="${esc(meta.note||'')}" placeholder="e.g. 36 in wh / at 03-28"></label></div>`;
   }).join('')||'<div class="hint">No saved products for today.</div>';
-  el('workingStatus').textContent=`Generated ${rows.length} product entries for today. Add names/notes if needed; changes save automatically and regenerate the report.`;
+  el('workingStatus').textContent=`Generated ${rows.length} product entries for ${selectedWorkingDate()||'selected date'}. Add names/notes if needed; changes save automatically and regenerate the report.`;
  }catch(e){el('workingStatus').textContent='Report error: '+e.message}
 }
+el('workingPeriod').addEventListener('change',()=>{
+ const selected=el('workingPeriod').value==='selected';
+ el('workingDateWrap').style.display=selected?'block':'none';
+ if(selected)refreshWorkingDates();
+ generateWorkingReport();
+});
+el('workingDate').addEventListener('change',generateWorkingReport);
 el('generateWorking').addEventListener('click',generateWorkingReport);
 el('workingEditor').addEventListener('change',e=>{
  if(!e.target.matches('.workingName,.workingNote'))return;
