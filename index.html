@@ -35,7 +35,19 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 .recordRight{display:flex;align-items:center;gap:10px}.deleteRecord{width:44px;min-width:44px;min-height:44px;margin:0;padding:0;border:1px solid #999;border-radius:10px;background:#fff;color:#111;font-size:25px;line-height:1;font-weight:700}
 .tabs{display:flex;gap:8px;margin:12px 0}.tabs button{flex:1;min-height:46px;font-size:15px}.tabs button[aria-selected="true"]{background:#111;color:#fff}.page[hidden]{display:none!important}select{width:100%;min-height:48px;margin-top:5px;padding:10px;border:1px solid #999;border-radius:10px;font-size:17px;background:white}.lookup{font-size:14px;line-height:1.6;margin:10px 0;overflow-wrap:anywhere}.empty{color:#666;font-size:14px;padding:8px 0}
 @media(max-width:420px){.grid3{grid-template-columns:1fr 1fr}.actions{grid-template-columns:2fr 1fr}}
-</style>
+
+/* v45: mobile quick navigation */
+body{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+#quickBottomNav{position:fixed;bottom:0;left:0;right:0;z-index:1000;display:flex;gap:4px;padding:7px 8px calc(7px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #aaa;box-shadow:0 -3px 12px #0001}
+#quickBottomNav button{flex:1;min-width:0;min-height:51px;font-size:20px;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+#quickBottomNav small{font-size:11px;line-height:1.2}
+#quickBottomNav button[aria-current="page"]{background:#111;color:white}
+body:not(.quick-pallet) #quickBottomNav{display:none}
+#quickSaveBar{position:fixed;bottom:calc(72px + env(safe-area-inset-bottom));left:0;right:0;z-index:999;padding:6px 12px;background:#fffffff2;border-top:1px solid #ddd;display:none}
+#quickSaveBar button{width:100%;min-height:48px;background:#111;color:#fff}
+body.quick-pallet.quick-count #quickSaveBar{display:block}
+body.quick-pallet.quick-count{padding-bottom:calc(145px + env(safe-area-inset-bottom))}
+body.quick-pallet .quick-group{display:none}body.quick-pallet.quick-count #quickCalcGroup,body.quick-pallet.quick-notes #quickNotesGroup,body.quick-pallet.quick-inventory #quickInventoryGroup,body.quick-pallet.quick-report #quickReportGroup{display:block}body.quick-pallet #quickStockGroup{display:none}body.quick-pallet #originalSaveActions{display:none}body.quick-pallet.quick-count #quickStockGroup{display:block}body.quick-pallet.quick-count #status{display:block}body.quick-pallet:not(.quick-count) #status{display:none}</style>
 </head>
 <body>
 <main>
@@ -44,6 +56,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 
 <nav class="tabs" aria-label="Calculator pages"><button id="tabPallet" type="button" aria-selected="true">Pallet Counter</button><button id="tabProduct" type="button" aria-selected="false">Product Calculator</button><button id="tabPrice" type="button" aria-selected="false">Price Tags</button></nav>
 <div id="palletPage" class="page">
+<div id="quickCalcGroup" class="quick-group">
 <section class="card" style="margin-top:0">
 <h2>Counting Location</h2>
 <div class="grid2" role="group" aria-label="Pallet counter location">
@@ -92,6 +105,8 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 </div>
 <div class="total"><div>LOCATION ITEMS</div><div class="num" id="total">0</div><div id="breakdown">0 total boxes</div></div>
 
+</div>
+<div id="quickStockGroup" class="quick-group">
 <section class="card" id="combinedStock" aria-live="polite">
 <h2>Overall Stock (Office + Warehouse)</h2>
 <p>Both locations are counted separately. Combined Physical Count includes active stock adjustments and is compared with the system amount.</p>
@@ -103,6 +118,8 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <div class="hint" id="combinedHint"></div>
 <p class="hint">Combined Physical Count includes active Add and Deduct movements from Notes. Reference-only notes do not change stock.</p>
 </section>
+</div>
+<div id="quickNotesGroup" class="quick-group">
 <section class="card" id="stockAdjustmentCard"><h2>Notes</h2><p><strong>Deduct (−)</strong> and <strong>Add (+)</strong> change Combined Physical Count. <strong>Note</strong> records information without changing stock. Previous stock adjustments and reconciliation entries appear together below.</p>
 <div class="grid2"><label>Action<select id="adjustAction"><option value="minus">Deduct (−)</option><option value="plus">Add (+)</option><option value="note">Note (no stock change)</option></select></label><label>Quantity<input id="adjustQty" type="number" inputmode="numeric" min="1" step="1" placeholder="20"></label></div>
 <div class="grid2"><label>Unit<select id="adjustUnit"><option value="cartons">Cartons</option><option value="boxes">Boxes</option><option value="pieces">Pieces</option></select></label><label>Pieces per carton / box<input id="adjustEach" type="number" inputmode="numeric" min="1" step="1" placeholder="12"></label></div>
@@ -127,9 +144,11 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 </div>
 </div>
 </section>
-<div class="actions"><button id="save" type="button">SAVE COUNT</button><button id="clear" type="button">Clear</button></div>
+</div>
+<div class="actions" id="originalSaveActions"><button id="save" type="button">SAVE COUNT</button><button id="clear" type="button">Clear</button></div>
 <div class="status" id="status" aria-live="polite"></div>
 
+<div id="quickReportGroup" class="quick-group">
 <section class="card" id="dailyWorkingCard">
 <h2>Stock Working — Copy Report</h2>
 <p>Generate a WhatsApp-ready report from today's counts or a selected saved date. This is a read-only report and never changes stock quantities. The generated report can be edited directly in the report text box before copying.</p>
@@ -139,6 +158,8 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <label>Report text (editable before copying)<textarea id="workingOutput" rows="12" style="width:100%;margin-top:6px;padding:10px;font:14px/1.5 monospace;white-space:pre-wrap;border:1px solid #999;border-radius:10px" spellcheck="false" placeholder="Save today's stock counts, then generate a report."></textarea></label>
 <div class="hint" id="workingStatus" aria-live="polite"></div>
 </section>
+</div>
+<div id="quickInventoryGroup" class="quick-group">
 <section class="card">
 <div class="historyHead"><h2>Saved Inventory</h2><button id="export" type="button">Export CSV</button></div>
 <div class="actions"><button id="backupData" type="button">Export Data Backup (JSON)</button><button id="importData" type="button">Import Data Backup</button><input id="importDataFile" type="file" accept=".json,application/json" hidden></div>
@@ -147,6 +168,7 @@ button{min-height:52px;border:1px solid #777;border-radius:12px;background:#fff;
 <div class="actions"><button id="recheckAllToday" type="button">↻ Check Again for All (Today)</button></div><div class="inventory-search" style="display:flex;gap:8px;align-items:center;margin:10px 0"><input id="inventorySearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" placeholder="Search saved product code" aria-label="Search saved inventory by product code" style="flex:1;min-width:0"><button id="clearInventorySearch" type="button" style="white-space:nowrap">Clear</button></div><div id="inventorySearchCount" class="hint" aria-live="polite"></div>
 <div class="inventory-nav" aria-label="Saved inventory date navigation"><button type="button" class="dateNav" data-filter="today">Today</button><button type="button" class="dateNav" data-filter="yesterday">Yesterday</button><button type="button" class="dateNav" data-filter="all">All Dates</button></div><label class="inventory-date-select">Jump to saved date<select id="inventoryDate"><option value="all">All saved dates</option></select></label><div id="history"></div>
 </section>
+</div>
 </main>
 
 </div>
@@ -823,5 +845,35 @@ el('copyWorking').addEventListener('click',async()=>{
  catch(e){el('workingOutput').focus();el('workingOutput').select();el('workingStatus').textContent='Clipboard permission unavailable. Select and copy the highlighted report.'}
 });
 </script>
-</body>
+<nav id="quickBottomNav" aria-label="Pallet counter quick navigation">
+<button type="button" data-quick="calc">🧮<small>Count</small></button>
+<button type="button" data-quick="notes">📝<small>Notes</small></button>
+<button type="button" data-quick="inventory">📦<small>Inventory</small></button>
+<button type="button" data-quick="report">📋<small>Report</small></button>
+</nav><script>
+// v45 navigation is presentation-only; all existing inventory/save logic is unchanged.
+(function(){
+ const nav=document.getElementById('quickBottomNav');
+ const targets={calc:'quickCalcGroup',notes:'quickNotesGroup',inventory:'quickInventoryGroup',report:'quickReportGroup'};
+ const buttons=[...nav.querySelectorAll('[data-quick]')];
+ const saveBar=document.createElement('div');saveBar.id='quickSaveBar';saveBar.innerHTML='<button type="button" id="quickSaveCount">SAVE COUNT</button>';
+ document.body.appendChild(saveBar);
+ document.getElementById('quickSaveCount').addEventListener('click',()=>document.getElementById('save').click());
+ function isPallet(){return !document.getElementById('palletPage').hidden}
+ function updateVisibility(){document.body.classList.toggle('quick-pallet',isPallet())}
+ function selectQuick(section){
+  if(!targets[section])return;
+  document.body.classList.remove('quick-count','quick-notes','quick-inventory','quick-report');
+  document.body.classList.add('quick-'+(section==='calc'?'count':section));
+  buttons.forEach(b=>{if(b.dataset.quick===section)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+  window.scrollTo({top:0,behavior:"instant"});
+ }
+ buttons.forEach(b=>b.addEventListener('click',()=>selectQuick(b.dataset.quick)));
+ for(const id of ['tabPallet','tabProduct','tabPrice'])document.getElementById(id).addEventListener('click',()=>setTimeout(updateVisibility,0));
+ document.getElementById('history').addEventListener('click',e=>{
+  if(e.target.closest('.loadRecord')){selectQuick("calc");}
+ });
+ updateVisibility();selectQuick('calc');
+})();
+</script></body>
 </html>
