@@ -45,8 +45,8 @@ body{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
 body:not(.quick-pallet) #quickBottomNav{display:none}
 #quickSaveBar{position:fixed;bottom:calc(72px + env(safe-area-inset-bottom));left:0;right:0;z-index:999;padding:6px 12px;background:#fffffff2;border-top:1px solid #ddd;display:none}
 #quickSaveBar button{width:100%;min-height:48px;background:#111;color:#fff}
-body.quick-pallet.quick-count #quickSaveBar{display:block}
-body.quick-pallet.quick-count{padding-bottom:calc(145px + env(safe-area-inset-bottom))}
+body.quick-pallet #quickSaveBar{display:block}
+body.quick-pallet{padding-bottom:calc(145px + env(safe-area-inset-bottom))}
 body.quick-pallet .quick-group{display:none}body.quick-pallet.quick-count #quickCalcGroup,body.quick-pallet.quick-notes #quickNotesGroup,body.quick-pallet.quick-inventory #quickInventoryGroup,body.quick-pallet.quick-report #quickReportGroup{display:block}body.quick-pallet #quickStockGroup{display:none}body.quick-pallet #originalSaveActions{display:none}body.quick-pallet.quick-count #quickStockGroup{display:block}body.quick-pallet.quick-count #status{display:block}body.quick-pallet:not(.quick-count) #status{display:none}</style>
 </head>
 <body>
@@ -858,7 +858,7 @@ el('copyWorking').addEventListener('click',async()=>{
  const buttons=[...nav.querySelectorAll('[data-quick]')];
  const saveBar=document.createElement('div');saveBar.id='quickSaveBar';saveBar.innerHTML='<button type="button" id="quickSaveCount">SAVE COUNT</button>';
  document.body.appendChild(saveBar);
- document.getElementById('quickSaveCount').addEventListener('click',()=>document.getElementById('save').click());
+ document.getElementById('quickSaveCount').addEventListener('click',()=>{if(!document.body.classList.contains('quick-count'))nav.querySelector('[data-quick=calc]').click();document.getElementById('save').click();});
  function isPallet(){return !document.getElementById('palletPage').hidden}
  function updateVisibility(){document.body.classList.toggle('quick-pallet',isPallet())}
  function selectQuick(section){
