@@ -591,6 +591,27 @@ el('save').addEventListener('click',()=>{
  const nextBacktracked=nextBacktracks.reduce((sum,x)=>sum+x.qty,0);
  const record={location:activeLocation,date:today,code,amount:c.total,updatedAt:Date.now(),inputs:{lw:el('lw').value,ll:el('ll').value,lh:el('lh').value,extra:el('extra').value,fp:el('fp').value,fw:el('fw').value,fl:el('fl').value,fh:el('fh').value,items:el('items').value,looseQty:el('looseQty').value,looseEach:el('looseEach').value,systemAmount:el('systemAmount').value,backtracked:nextBacktracked,backtrackEntries:nextBacktracks}};
  if(existing>=0) r[existing]=record; else r.push(record);
+ // Save a populated draft of the other location together with this count.
+ // Switching locations must not silently discard a count entered before Save.
+ const otherLoc=activeLocation==='warehouse'?'office':'warehouse';
+ const otherDraft=drafts[otherLoc];
+ const physicalFields=['lw','ll','lh','extra','fp','fw','fl','fh','looseQty','looseEach'];
+ const otherHasCount=otherDraft && String(otherDraft.product||'').trim().toLowerCase()===code.toLowerCase()
+   && physicalFields.some(id=>String(otherDraft.inputs?.[id]??'').trim()!=='' && (id!=='fp'&&id!=='extra'||Number(otherDraft.inputs[id])!==0));
+ let otherRecord=null;
+ if(otherHasCount){
+  const otherExisting=r.findIndex(x=>locationOf(x)===otherLoc&&x.date===today&&String(x.code).trim().toLowerCase()===code.toLowerCase());
+  const otherTotal=physicalFromInputs(otherDraft.inputs);
+  if(otherExisting>=0 && Number(r[otherExisting].amount)!==otherTotal &&
+     !confirm(`Also overwrite today's ${otherLoc==='office'?'Office':'Warehouse'} count for ${code}?\\nPrevious: ${Number(r[otherExisting].amount).toLocaleString()} items\\nNew: ${otherTotal.toLocaleString()} items`)){
+    el('status').textContent='Save cancelled. Both location inputs are unchanged.';return;
+  }
+  otherRecord={location:otherLoc,date:today,code,amount:otherTotal,updatedAt:Date.now(),
+   inputs:{...Object.fromEntries(ids.map(id=>[id,otherDraft.inputs?.[id]??''])),
+    items:record.inputs.items,systemAmount:record.inputs.systemAmount,
+    backtracked:nextBacktracked,backtrackEntries:nextBacktracks.map(x=>({...x}))}};
+  if(otherExisting>=0)r[otherExisting]=otherRecord;else r.push(otherRecord);
+ }
  // Keep common values in both saved location records without changing the other physical count.
  for(const saved of r)if(saved!==record && saved.date===today && String(saved.code).toLowerCase()===code.toLowerCase()){
   saved.inputs=saved.inputs||{};
@@ -602,14 +623,15 @@ el('save').addEventListener('click',()=>{
 
  try{putRecords(r)}catch(err){el('status').textContent='Save failed: '+err.message;return}
  const verified=getRecords().find(x=>locationOf(x)===activeLocation&&x.date===today&&String(x.code).toLowerCase()===code.toLowerCase());
- if(!verified||JSON.stringify(normalizeBacktracks(verified.inputs))!==JSON.stringify(nextBacktracks)||Number(verified.amount)!==Number(c.total)||String(verified.inputs?.items)!==String(record.inputs.items)||String(verified.inputs?.systemAmount)!==String(record.inputs.systemAmount)){
+ const verifiedOther=otherRecord?getRecords().find(x=>locationOf(x)===otherLoc&&x.date===today&&String(x.code).toLowerCase()===code.toLowerCase()):null;
+ if((otherRecord&&(!verifiedOther||Number(verifiedOther.amount)!==Number(otherRecord.amount)))||!verified||JSON.stringify(normalizeBacktracks(verified.inputs))!==JSON.stringify(nextBacktracks)||Number(verified.amount)!==Number(c.total)||String(verified.inputs?.items)!==String(record.inputs.items)||String(verified.inputs?.systemAmount)!==String(record.inputs.systemAmount)){
   el('status').textContent='Save could not be verified. Do not switch locations; export a backup and check browser storage.';return;
  }
  renderHistory();
  el('status').textContent=`Saved ${code}: ${c.total.toLocaleString()} items. Same code today in this location will be overwritten. Saved Inventory combines both locations.`;
  // After a verified save, clear every input and both location drafts for the next product.
  discardPreviousProduct();
- el('status').textContent=`Saved ${code} (${activeLocation==='office'?'Office':'Warehouse'}): ${c.total.toLocaleString()} items. Verified in Saved Inventory. All inputs cleared.`;
+ el('status').textContent=`Saved ${code} (${activeLocation==='office'?'Office':'Warehouse'}): ${c.total.toLocaleString()} items. Verified in Saved Inventory. ${otherRecord?' Both Warehouse and Office counts saved.':''} All inputs cleared.`;
  }catch(err){el('status').textContent='Save failed; inputs kept: '+err.message}
 });
 el('clear').addEventListener('click',()=>{editingSavedProduct=false;drafts.warehouse=null;drafts.office=null;sharedProduct='';sharedBacktracks=[];resetInputs();el('status').textContent='Calculator cleared.'});
