@@ -320,7 +320,7 @@ function matchingOtherData(code){
  if(rec)return {total:Number(rec.amount)||0,back:backtrackTotalFromInputs(rec.inputs),system:rec.inputs?.systemAmount,source:'saved '+other+' count ('+rec.date+')'};
  return {total:0,back:0,system:'',source:'no '+other+' count yet'};
 }
-// Stock movements are a separate, product-wide ledger, not a modification to raw pallet counts.
+// Stock movements are stored by product but applied only to their own calendar date.
 const ADJUST_KEY='palletCounterStockAdjustmentsV1';
 const LEGACY_MIGRATION_KEY='palletCounterLegacyNotesMigratedV1';
 function legacyMigrationMarkers(){try{const x=JSON.parse(localStorage.getItem(LEGACY_MIGRATION_KEY)||'{}');return x&&typeof x==='object'&&!Array.isArray(x)?x:{}}catch(e){return {}}}
@@ -332,8 +332,17 @@ function getAdjustments(){
  for(const entries of Object.values(data))if(!Array.isArray(entries)||entries.some(x=>!x||!Number.isSafeInteger(x.pieces)||x.pieces<=0||!['plus','minus','note'].includes(x.action)||typeof x.note!=='string'||typeof x.id!=='string'||typeof x.active!=='boolean'))throw new Error('Stock adjustment entries are invalid.');
  return data;
 }
-function adjustmentEntries(code){return getAdjustments()[adjustCode(code)]||[]}
-function adjustmentNet(code){return adjustmentEntries(code).filter(x=>x.active).reduce((n,x)=>n+(x.action==='plus'?x.pieces:x.action==='minus'?-x.pieces:0),0)}
+function adjustmentDate(entry){
+ // Legacy reconciliation entries have their original saved date.
+ // Older movements use their creation timestamp in the user's local timezone.
+ if(typeof entry.date==='string' && /^\d{4}-\d{2}-\d{2}$/.test(entry.date))return entry.date;
+ const stamp=entry.createdAt;
+ if(typeof stamp==='string' && /^\d{4}-\d{2}-\d{2}T00:00:00$/.test(stamp)&&entry.legacy)return stamp.slice(0,10);
+ const d=new Date(stamp);
+ return Number.isNaN(d.getTime())?'':dateKey(d);
+}
+function adjustmentEntries(code,day=dateKey()){return (getAdjustments()[adjustCode(code)]||[]).filter(x=>adjustmentDate(x)===day)}
+function adjustmentNet(code,day=dateKey()){return adjustmentEntries(code,day).filter(x=>x.active).reduce((n,x)=>n+(x.action==='plus'?x.pieces:x.action==='minus'?-x.pieces:0),0)}
 function migratePreviousReconciliationNotes(code){
  // Preserve legacy inventory inputs. Copy distinct old backtracked entries to Notes once.
  // Mark each imported record by date/product/entry occurrence so reloading cannot duplicate it.
@@ -349,7 +358,7 @@ function migratePreviousReconciliationNotes(code){
    const id=`legacy-backtrack|${day}|${key}|${i}`;
    if(markers[id]||(ledger[key]||[]).some(y=>y.id===id))return;
    markers[id]=true;markerChanged=true;
-   (ledger[key]??=[]).push({id,action:'note',qty:x.qty,unit:'pieces',each:1,pieces:x.qty,note:`Stock reconciliation (${day}): ${x.note||'Previous backtracked entry'}`,active:true,createdAt:`${day}T00:00:00`,legacy:true});
+   (ledger[key]??=[]).push({id,action:'note',qty:x.qty,unit:'pieces',each:1,pieces:x.qty,note:`Stock reconciliation (${day}): ${x.note||'Previous backtracked entry'}`,active:true,date:day,createdAt:`${day}T00:00:00`,legacy:true});
    changed=true;
   });
  }
@@ -373,11 +382,11 @@ el('addAdjustment').addEventListener('click',()=>{
  if(!Number.isSafeInteger(qty)||qty<=0||!Number.isSafeInteger(each)||each<=0||!Number.isSafeInteger(qty*each))throw new Error('Enter valid positive whole-number quantities and pieces per unit.');
  if(!note)throw new Error('Enter a note explaining the movement.');
  const pieces=qty*each,ledger=getAdjustments(),key=adjustCode(code),now=new Date().toISOString();
- const current=(ledger[key]||[]).filter(x=>x.active).reduce((sum,x)=>sum+(x.action==='plus'?x.pieces:x.action==='minus'?-x.pieces:0),0);
+ const current=adjustmentEntries(code,dateKey()).filter(x=>x.active).reduce((sum,x)=>sum+(x.action==='plus'?x.pieces:x.action==='minus'?-x.pieces:0),0);
  const original=(Number(el('warehouseTotal').textContent.replace(/,/g,''))||0)+(Number(el('officeTotal').textContent.replace(/,/g,''))||0);
  if(action==='minus'&&original+current-pieces<0&&!confirm('This deduction makes the adjusted stock negative. Continue?'))return;
  if(!confirm(`${action==='note'?'Record note for':action==='minus'?'Deduct':'Add'} ${pieces.toLocaleString()} pieces for ${code}?\nNote: ${note}`))return;
- (ledger[key]??=[]).push({id:now+'-'+Math.random().toString(36).slice(2),action,qty,unit,each,pieces,note,active:true,createdAt:now});
+ (ledger[key]??=[]).push({id:now+'-'+Math.random().toString(36).slice(2),action,qty,unit,each,pieces,note,active:true,date:dateKey(),createdAt:now});
  localStorage.setItem(ADJUST_KEY,JSON.stringify(ledger));
  if(JSON.stringify(getAdjustments()[key])!==JSON.stringify(ledger[key]))throw new Error('Adjustment save verification failed.');
  el('adjustQty').value='';el('adjustNote').value='';calc();renderHistory();el('adjustMessage').textContent='Adjustment saved and verified.';
@@ -458,13 +467,13 @@ function combinedSavedRows(){
 function savedRowMetrics(row){
  const warehouse=Number(row.warehouse?.amount)||0,office=Number(row.office?.amount)||0;
  const total=precise(warehouse+office);
- const adjusted=precise(total+adjustmentNet(row.code));
+ const adjusted=precise(total+adjustmentNet(row.code,row.date));
  const systemValues=[row.warehouse?.inputs?.systemAmount,row.office?.inputs?.systemAmount].filter(v=>v!==undefined&&v!==null&&String(v).trim()!=='');
  const hasSystem=systemValues.length>0,system=hasSystem?whole(Number(systemValues[0])||0):0;
  const back=Math.max(backtrackTotalFromInputs(row.warehouse?.inputs),backtrackTotalFromInputs(row.office?.inputs));
  const initial=precise(adjusted-system),remaining=initial;
  const status=v=>v===0?'Matched':v>0?'Excess':'Short';
- return {warehouse,office,total,adjusted,adjustNet:adjustmentNet(row.code),hasSystem,system,back,initial,remaining,status:hasSystem?status(remaining):'—'};
+ return {warehouse,office,total,adjusted,adjustNet:adjustmentNet(row.code,row.date),hasSystem,system,back,initial,remaining,status:hasSystem?status(remaining):'—'};
 }
 const RECHECK_KEY='palletCounterRecheckV1';
 let inventoryFilter='all';
@@ -597,7 +606,7 @@ el('save').addEventListener('click',()=>{
  const otherDraft=drafts[otherLoc];
  const physicalFields=['lw','ll','lh','extra','fp','fw','fl','fh','looseQty','looseEach'];
  const otherHasCount=otherDraft && String(otherDraft.product||'').trim().toLowerCase()===code.toLowerCase()
-   && physicalFields.some(id=>String(otherDraft.inputs?.[id]??'').trim()!=='' && (id!=='fp'&&id!=='extra'||Number(otherDraft.inputs[id])!==0));
+   && physicalFields.some(id=>String(otherDraft.inputs?.[id]??'').trim()!=='' && Number(otherDraft.inputs[id])!==0);
  let otherRecord=null;
  if(otherHasCount){
   const otherExisting=r.findIndex(x=>locationOf(x)===otherLoc&&x.date===today&&String(x.code).trim().toLowerCase()===code.toLowerCase());
@@ -862,7 +871,7 @@ function workingReport(){
    lines.push(`= ${fmt((Number(row.warehouse.amount)||0)+(Number(row.office.amount)||0))} combined`);
   }else if(wh!==null)lines.push(`= ${wh} = ${fmt(row.warehouse.amount)} (wh)`);
   else if(office!==null)lines.push(`= ${office} = ${fmt(row.office.amount)} (office)`);
-  const net=adjustmentNet(row.code);
+  const net=adjustmentNet(row.code,row.date);
   if(net)lines.push(`= ${fmt((Number(row.warehouse?.amount)||0)+(Number(row.office?.amount)||0))}${net>0?'+':'−'}${fmt(Math.abs(net))} = ${fmt(savedRowMetrics(row).adjusted)} (stock adjustment)`);
   if(note)lines.push(note);
   lines.push('');
