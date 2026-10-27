@@ -322,6 +322,8 @@ function matchingOtherData(code){
 }
 // Stock movements are a separate, product-wide ledger, not a modification to raw pallet counts.
 const ADJUST_KEY='palletCounterStockAdjustmentsV1';
+const LEGACY_MIGRATION_KEY='palletCounterLegacyNotesMigratedV1';
+function legacyMigrationMarkers(){try{const x=JSON.parse(localStorage.getItem(LEGACY_MIGRATION_KEY)||'{}');return x&&typeof x==='object'&&!Array.isArray(x)?x:{}}catch(e){return {}}}
 function adjustCode(code){return String(code||'').trim().toLowerCase()}
 function getAdjustments(){
  const raw=localStorage.getItem(ADJUST_KEY);if(raw===null)return {};
@@ -336,18 +338,22 @@ function migratePreviousReconciliationNotes(code){
  // Preserve legacy inventory inputs. Copy distinct old backtracked entries to Notes once.
  // Mark each imported record by date/product/entry occurrence so reloading cannot duplicate it.
  if(!code)return;
- const records=getRecords(),ledger=getAdjustments(),key=adjustCode(code);
+ const records=getRecords(),ledger=getAdjustments(),key=adjustCode(code),markers=legacyMigrationMarkers();
+ let markerChanged=false;
+ for(const item of ledger[key]||[]){if(item.legacy&&!markers[item.id]){markers[item.id]=true;markerChanged=true;}}
  const dates=[...new Set(records.filter(r=>adjustCode(r.code)===key).map(r=>r.date))];
  let changed=false;
  for(const day of dates){
   const entries=savedBacktracksForProduct(records,code,day);
   entries.forEach((x,i)=>{
    const id=`legacy-backtrack|${day}|${key}|${i}`;
-   if((ledger[key]||[]).some(y=>y.id===id))return;
+   if(markers[id]||(ledger[key]||[]).some(y=>y.id===id))return;
+   markers[id]=true;markerChanged=true;
    (ledger[key]??=[]).push({id,action:'note',qty:x.qty,unit:'pieces',each:1,pieces:x.qty,note:`Stock reconciliation (${day}): ${x.note||'Previous backtracked entry'}`,active:true,createdAt:`${day}T00:00:00`,legacy:true});
    changed=true;
   });
  }
+ if(markerChanged)localStorage.setItem(LEGACY_MIGRATION_KEY,JSON.stringify(markers));
  if(changed)localStorage.setItem(ADJUST_KEY,JSON.stringify(ledger));
 }
 function adjustmentDisplay(code,original){
@@ -382,8 +388,10 @@ el('adjustmentEntries').addEventListener('click',e=>{
  try{const code=el('product').value.trim(),ledger=getAdjustments(),entry=(ledger[adjustCode(code)]||[]).find(x=>x.id===button.dataset.id&&x.active);
  if(!entry)return;
  if(!confirm(`Remove ${entry.action==='note'?'note':entry.action==='minus'?'deduction':'addition'} of ${entry.pieces.toLocaleString()} pieces (${entry.note})? ${entry.action==='note'?'This note has no stock effect.':entry.action==='minus'?'The deducted amount will be added back to the adjusted total.':'The added amount will be subtracted from the adjusted total.'}`))return;
- entry.active=false;entry.reversedAt=new Date().toISOString();localStorage.setItem(ADJUST_KEY,JSON.stringify(ledger));
- if(getAdjustments()[adjustCode(code)].find(x=>x.id===entry.id)?.active!==false)throw new Error('Reversal verification failed.');
+ if(entry.legacy){const markers=legacyMigrationMarkers();markers[entry.id]=true;localStorage.setItem(LEGACY_MIGRATION_KEY,JSON.stringify(markers));}
+ ledger[adjustCode(code)]=ledger[adjustCode(code)].filter(x=>x.id!==entry.id);
+ localStorage.setItem(ADJUST_KEY,JSON.stringify(ledger));
+ if(getAdjustments()[adjustCode(code)].some(x=>x.id===entry.id))throw new Error('Removal verification failed.');
  calc();renderHistory();el('adjustMessage').textContent='Adjustment removed. Adjusted total recalculated.';
  }catch(err){el('adjustMessage').textContent='Cannot reverse: '+err.message}
 });
@@ -538,7 +546,7 @@ function loadCombinedRow(row){
 }
 el('history').addEventListener('click',e=>{
  const rows=combinedSavedRows(),load=e.target.closest('.loadCombined'),del=e.target.closest('.deleteCombined'),recheck=e.target.closest('.recheck-btn');if(recheck){const row=rows[Number(recheck.dataset.index)];if(!row)return;const markers=getRechecks();markers[recheckId(row.date,row.code)]=Date.now();try{localStorage.setItem(RECHECK_KEY,JSON.stringify(markers))}catch(err){el('status').textContent='Cannot save recheck status: '+err.message;return}renderHistory();el('status').textContent=`${row.code} marked for recheck. Saved counts unchanged.`;return}
- if(load){const row=rows[Number(load.dataset.index)];if(row)loadCombinedRow(row);return}
+ if(load){const row=rows[Number(load.dataset.index)];if(row){loadCombinedRow(row);document.querySelector('#quickBottomNav [data-quick=calc]')?.click();}return}
  if(del){const row=rows[Number(del.dataset.index)];if(!row)return;
   if(!confirm(`Delete Warehouse and Office saved counts for ${row.code} on ${row.date}?`))return;
   const indices=new Set(Object.values(row.indices));putRecords(getRecords().filter((_,i)=>!indices.has(i)));
@@ -618,10 +626,17 @@ el('export').addEventListener('click',()=>{
 // Portable full-data backup (not the summary-only CSV). Includes inventory, POs,
 // carton/box settings and price tag changes; only the app's own keys are touched.
 const WORKING_KEY='palletCounterWorkingLabelsV1';
-const BACKUP_KEYS=[WORKING_KEY,RECHECK_KEY,ADJUST_KEY,KEY,'palletCounterCustomDimensionsV1','palletCounterCustomPricesV1','palletCounterSavedCartonBoxV1','palletCounterPickingPOsV1'];
+const BACKUP_KEYS=[WORKING_KEY,RECHECK_KEY,ADJUST_KEY,LEGACY_MIGRATION_KEY,KEY,'palletCounterCustomDimensionsV1','palletCounterCustomPricesV1','palletCounterSavedCartonBoxV1','palletCounterPickingPOsV1'];
 function downloadBackup(){
  const data={format:'pallet-counter-backup',version:1,exportedAt:new Date().toISOString(),stores:{}};
- BACKUP_KEYS.forEach(key=>{const value=localStorage.getItem(key);if(value!==null)data.stores[key]=JSON.parse(value)});
+ BACKUP_KEYS.forEach(key=>{const value=localStorage.getItem(key);if(value!==null){
+  const parsed=JSON.parse(value);
+  if(key===ADJUST_KEY){
+   const activeOnly={};
+   for(const [code,entries] of Object.entries(parsed)){const active=entries.filter(x=>x.active);if(active.length)activeOnly[code]=active;}
+   data.stores[key]=activeOnly;
+  }else data.stores[key]=parsed;
+ }});
  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
  const url=URL.createObjectURL(blob),a=document.createElement('a');
  a.href=url;a.download='pallet-counter-backup-'+dateKey()+'.json';a.click();
@@ -643,6 +658,16 @@ el('importDataFile').addEventListener('change',async e=>{
   if(KEY in stores && (!Array.isArray(stores[KEY])||stores[KEY].some(r=>!r||typeof r!=='object'||typeof r.date!=='string'||typeof r.code!=='string'||!Number.isFinite(Number(r.amount)))))
    throw new Error('Invalid inventory records.');
   if(ADJUST_KEY in stores){const entries=stores[ADJUST_KEY];if(!entries||typeof entries!=='object'||Array.isArray(entries)||Object.values(entries).some(a=>!Array.isArray(a)||a.some(x=>!x||!Number.isSafeInteger(x.pieces)||x.pieces<=0||!['plus','minus','note'].includes(x.action)||typeof x.note!=='string'||typeof x.id!=='string'||typeof x.active!=='boolean')))throw new Error('Invalid stock adjustments in backup.')}
+  // Old backups may contain removed notes; discard them during restore and keep
+  // legacy migration IDs so historical backtracks cannot recreate removed notes.
+  if(ADJUST_KEY in stores){
+   const markers={...(stores[LEGACY_MIGRATION_KEY]||{})};
+   for(const [code,entries] of Object.entries(stores[ADJUST_KEY])){
+    for(const entry of entries)if(entry.legacy)markers[entry.id]=true;
+    stores[ADJUST_KEY][code]=entries.filter(entry=>entry.active);
+   }
+   stores[LEGACY_MIGRATION_KEY]=markers;
+  }
   for(const key of BACKUP_KEYS.filter(k=>k!==KEY)){
    if(key in stores && (!stores[key]||typeof stores[key]!=='object'||Array.isArray(stores[key])))
     throw new Error('Invalid saved settings: '+key);
@@ -871,7 +896,7 @@ el('copyWorking').addEventListener('click',async()=>{
  buttons.forEach(b=>b.addEventListener('click',()=>selectQuick(b.dataset.quick)));
  for(const id of ['tabPallet','tabProduct','tabPrice'])document.getElementById(id).addEventListener('click',()=>setTimeout(updateVisibility,0));
  document.getElementById('history').addEventListener('click',e=>{
-  if(e.target.closest('.loadRecord')){selectQuick("calc");}
+  if(e.target.closest('.loadCombined')){selectQuick('calc');}
  });
  updateVisibility();selectQuick('calc');
 })();
