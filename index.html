@@ -124,8 +124,10 @@ body.quick-pallet .quick-group{display:none}body.quick-pallet.quick-count #quick
 <div class="grid2"><label>Action<select id="adjustAction"><option value="minus">Deduct (−)</option><option value="plus">Add (+)</option><option value="note">Note (no stock change)</option></select></label><label>Quantity<input id="adjustQty" type="number" inputmode="numeric" min="1" step="1" placeholder="20"></label></div>
 <div class="grid2"><label>Unit<select id="adjustUnit"><option value="cartons">Cartons</option><option value="boxes">Boxes</option><option value="pieces">Pieces</option></select></label><label>Pieces per carton / box<input id="adjustEach" type="number" inputmode="numeric" min="1" step="1" placeholder="12"></label></div>
 <label>Where / why (required)<input id="adjustNote" type="text" maxlength="200" placeholder="e.g. Enterprise"></label>
-<div class="actions"><button id="addAdjustment" type="button">Save Note / Movement</button></div><div class="hint" id="adjustMessage" aria-live="polite"></div><div id="adjustmentEntries"></div>
-<div style="margin-top:14px;border-top:1px solid #ddd;padding-top:14px"><h3>System Stock Check</h3><p class="hint">Compare the system quantity with the adjusted Combined Physical Count. Notes do not affect the count.</p><label>System Amount<input id="systemAmount" type="number" inputmode="numeric" min="0" step="1" placeholder="Enter system stock quantity"></label><div class="box" style="margin-top:10px"><div>Difference (Combined − System)</div><div class="num" id="systemDifference">—</div><div id="systemDifferenceStatus" class="hint">Enter a system amount to check stock.</div></div></div>
+<div class="actions"><button id="addAdjustment" type="button">Save Note / Movement</button></div><div class="hint" id="adjustMessage" aria-live="polite"></div>
+<div class="box" style="margin:12px 0"><div>NOTE (NO STOCK CHANGE) — TODAY'S TOTAL</div><div class="num" id="noteOnlyTotal">0</div><div class="hint" id="noteOnlyCount">0 notes for this product today. Does not change physical stock.</div></div>
+<div id="adjustmentEntries"></div>
+<div style="margin-top:14px;border-top:1px solid #ddd;padding-top:14px"><h3>System Stock Check</h3><p class="hint">Compare the system quantity with the adjusted Combined Physical Count. Notes do not affect the count.</p><label>System Amount<input id="systemAmount" type="number" inputmode="numeric" min="0" step="1" placeholder="Enter system stock quantity"></label><div class="box" style="margin-top:10px"><div>Difference (Combined − System)</div><div class="num" id="systemDifference">—</div><div id="systemDifferenceStatus" class="hint">Enter a system amount to check stock.</div><div id="noteShortageCheck" class="hint" style="margin-top:8px;font-weight:700">Enter a system amount to compare with Notes.</div></div></div>
 <div id="legacyReconciliation" style="display:none">
 <h3>Previous Stock Reconciliation Notes</h3>
 <p class="hint">Previous backtracked entries are preserved and do not change Combined Physical Count. Load a saved product to view or edit its historical notes.</p>
@@ -372,6 +374,11 @@ function adjustmentDisplay(code,original){
  el('combinedTotal').textContent=(original+net).toLocaleString();
  const activeHtml=active.map(x=>`<div class="record"><div><strong>${x.action==='note'?'Note: ':x.action==='minus'?'−':'+'}${x.pieces.toLocaleString()} pieces</strong><div class="hint">${esc(x.qty)} ${esc(x.unit)} × ${esc(x.each)} · ${esc(x.note)}</div></div><button type="button" class="reverseAdjustment" data-id="${esc(x.id)}" style="font-size:13px;min-height:42px">Remove</button></div>`).join('');
  el('adjustmentEntries').innerHTML=(activeHtml||'<div class="hint">No active stock adjustments for this product.</div>');
+ const notes=active.filter(x=>x.action==='note');
+ const noteTotal=notes.reduce((sum,x)=>sum+x.pieces,0);
+ el('noteOnlyTotal').textContent=noteTotal.toLocaleString()+' pieces';
+ el('noteOnlyCount').textContent=`${notes.length} note${notes.length===1?'':'s'} for this product today. Reference only — not included in physical stock.`;
+
 }
 
 el('addAdjustment').addEventListener('click',()=>{
@@ -434,6 +441,13 @@ function calc(){
  const status=v=>v===0?'Matched':v>0?'Excess':'Short';
  el('systemDifference').textContent=hasSystem?fmt(initial):'—';
  el('systemDifferenceStatus').textContent=hasSystem?(initial<0?`${Math.abs(initial).toLocaleString()} pieces SHORT`:initial>0?`${initial.toLocaleString()} pieces EXCESS`:'Matched — no shortage'):'Enter a system amount to check stock.';
+ const referenceNotes=code?adjustmentEntries(code,dateKey()).filter(x=>x.active&&x.action==='note'):[];
+ const referenceTotal=referenceNotes.reduce((sum,x)=>sum+x.pieces,0);
+ const noteCheck=el('noteShortageCheck');
+ if(noteCheck)noteCheck.textContent=!hasSystem?'Enter a system amount to compare with Notes.':initial<0
+   ?(referenceTotal===Math.abs(initial)?`MATCH: ${referenceTotal.toLocaleString()} noted pieces equal the ${Math.abs(initial).toLocaleString()}-piece shortage.`:`Notes total: ${referenceTotal.toLocaleString()} pieces; shortage: ${Math.abs(initial).toLocaleString()} pieces; difference: ${Math.abs(Math.abs(initial)-referenceTotal).toLocaleString()} pieces. ${referenceTotal>Math.abs(initial)?'Notes exceed shortage.':'Notes do not fully cover shortage.'}`)
+   :`No system shortage. Notes total: ${referenceTotal.toLocaleString()} pieces.`;
+
  el('initialDifference').textContent=hasSystem?fmt(initial):'—';
  el('remainingDifference').textContent=hasSystem?`${fmt(remaining)} ${status(remaining)}`:'—';
  el('initialStatus').textContent=hasSystem?status(initial):'Enter system amount';
