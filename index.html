@@ -168,7 +168,7 @@ body.quick-pallet .quick-group{display:none}body.quick-pallet.quick-count #quick
 <p class="hint">Today: <strong style="color:#146b36">Green = saved since last recheck</strong>; <strong style="color:#865600">Amber = needs rechecking</strong>. A saved zero count counts as checked. Check Again marks the product for rechecking without deleting quantities.</p>
 <p>One saved inventory entry per date and product combines Warehouse + Office. Tap a product to load its counts. Switch locations to view or edit either side; Save Count stores the active location.</p>
 <div class="actions"><button id="recheckAllToday" type="button">↻ Check Again for All (Today)</button></div><div class="inventory-search" style="display:flex;gap:8px;align-items:center;margin:10px 0"><input id="inventorySearch" type="search" inputmode="search" autocomplete="off" autocapitalize="off" placeholder="Search saved product code" aria-label="Search saved inventory by product code" style="flex:1;min-width:0"><button id="clearInventorySearch" type="button" style="white-space:nowrap">Clear</button></div><div id="inventorySearchCount" class="hint" aria-live="polite"></div>
-<div class="inventory-nav" aria-label="Saved inventory date navigation"><button type="button" class="dateNav" data-filter="today">Today</button><button type="button" class="dateNav" data-filter="yesterday">Yesterday</button><button type="button" class="dateNav" data-filter="all">All Dates</button></div><label class="inventory-date-select">Jump to saved date<select id="inventoryDate"><option value="all">All saved dates</option></select></label><div id="history"></div>
+<div class="inventory-nav" aria-label="Saved inventory date navigation"><button type="button" class="dateNav" data-filter="today">Today</button><button type="button" class="dateNav" data-filter="yesterday">Yesterday</button><button type="button" class="dateNav" data-filter="all">All Dates</button><button type="button" class="dateNav" data-filter="movement">Movement</button></div><label class="inventory-date-select">Jump to saved date<select id="inventoryDate"><option value="all">All saved dates</option></select></label><div id="history"></div>
 </section>
 </div>
 </main>
@@ -490,6 +490,10 @@ function savedRowMetrics(row){
  return {warehouse,office,total,adjusted,adjustNet:adjustmentNet(row.code,row.date),hasSystem,system,back,initial,remaining,status:hasSystem?status(remaining):'—'};
 }
 const RECHECK_KEY='palletCounterRecheckV1';
+const MOVEMENT_KEY='palletCounterMovementFlagsV1';
+function getMovementFlags(){try{const x=JSON.parse(localStorage.getItem(MOVEMENT_KEY)||'{}');return x&&typeof x==='object'&&!Array.isArray(x)?x:{}}catch(e){return {}}}
+function movementId(date,code){return date+'|'+String(code).trim().toLowerCase()}
+
 let inventoryFilter='all';
 let inventorySearch='';
 el('inventorySearch').addEventListener('input',e=>{inventorySearch=e.target.value.trim().toLowerCase();renderHistory()});
@@ -511,7 +515,7 @@ el('recheckAllToday').addEventListener('click',()=>{
  try{localStorage.setItem(RECHECK_KEY,JSON.stringify(markers))}catch(err){el('status').textContent='Cannot save recheck status: '+err.message;return}
  renderHistory();el('status').textContent=`All ${rows.length} products saved today marked for recheck. Saved quantities are unchanged.`;
 });
-function updateDateNavigation(groups){const dates=Object.keys(groups).sort().reverse(),select=el('inventoryDate');select.innerHTML='<option value="all">All saved dates</option>'+dates.map(d=>`<option value="${esc(d)}">${esc(displayDate(d))}</option>`).join('');if(!['all','today','yesterday'].includes(inventoryFilter)&&!dates.includes(inventoryFilter))inventoryFilter='all';select.value=dates.includes(inventoryFilter)?inventoryFilter:'all';document.querySelectorAll('.dateNav').forEach(btn=>btn.setAttribute('aria-pressed',String(btn.dataset.filter===inventoryFilter)));}
+function updateDateNavigation(groups){const dates=Object.keys(groups).sort().reverse(),select=el('inventoryDate');select.innerHTML='<option value="all">All saved dates</option>'+dates.map(d=>`<option value="${esc(d)}">${esc(displayDate(d))}</option>`).join('');if(!['all','today','yesterday','movement'].includes(inventoryFilter)&&!dates.includes(inventoryFilter))inventoryFilter='all';select.value=dates.includes(inventoryFilter)?inventoryFilter:'all';document.querySelectorAll('.dateNav').forEach(btn=>btn.setAttribute('aria-pressed',String(btn.dataset.filter===inventoryFilter)));}
 document.querySelectorAll('.dateNav').forEach(btn=>btn.addEventListener('click',()=>{inventoryFilter=btn.dataset.filter;renderHistory();el('history').scrollIntoView({behavior:'smooth',block:'start'});}));
 el('inventoryDate').addEventListener('change',e=>{inventoryFilter=e.target.value;renderHistory()});
 function renderHistory(){
@@ -521,14 +525,21 @@ function renderHistoryUnsafe(){
  const rows=combinedSavedRows(),host=el('history');
  if(!rows.length){host.innerHTML='<div class="empty">No saved inventory yet.</div>';el('inventorySearchCount').textContent='';updateDateNavigation({});return}
  const groups={};rows.forEach(row=>(groups[row.date]??=[]).push(row));
- const today=dateKey(),yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);const yesterdayKey=dateKey(yesterday),markers=getRechecks();updateDateNavigation(groups);const visibleDates=Object.keys(groups).sort().reverse().filter(date=>inventoryFilter==='all'||date===(inventoryFilter==='today'?today:inventoryFilter==='yesterday'?yesterdayKey:inventoryFilter));
- const matchingRows=visibleDates.reduce((count,date)=>count+groups[date].filter(row=>String(row.code).toLowerCase().includes(inventorySearch)).length,0);
- el('inventorySearchCount').textContent=inventorySearch?`${matchingRows} matching saved ${matchingRows===1?'record':'records'}`:'';
- host.innerHTML=visibleDates.filter(date=>groups[date].some(row=>String(row.code).toLowerCase().includes(inventorySearch))).map(date=>`<div class="day"><h3>${esc(displayDate(date))}</h3>${groups[date].filter(row=>String(row.code).toLowerCase().includes(inventorySearch)).map(row=>{
+ const today=dateKey(),yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+ const yesterdayKey=dateKey(yesterday),markers=getRechecks(),movementFlags=getMovementFlags();
+ updateDateNavigation(groups);
+ const visibleDates=Object.keys(groups).sort().reverse().filter(date=>inventoryFilter==='all'||inventoryFilter==='movement'||date===(inventoryFilter==='today'?today:inventoryFilter==='yesterday'?yesterdayKey:inventoryFilter));
+ const showRow=row=>String(row.code).toLowerCase().includes(inventorySearch)&&(inventoryFilter!=='movement'||!!movementFlags[movementId(row.date,row.code)]);
+ const matchingRows=visibleDates.reduce((count,date)=>count+groups[date].filter(showRow).length,0);
+ el('inventorySearchCount').textContent=inventorySearch?`${matchingRows} matching ${inventoryFilter==='movement'?'movement ':'saved '}${matchingRows===1?'record':'records'}`:(inventoryFilter==='movement'?`${matchingRows} tracked movement ${matchingRows===1?'record':'records'}`:'');
+ host.innerHTML=visibleDates.filter(date=>groups[date].some(showRow)).map(date=>`<div class="day"><h3>${esc(displayDate(date))}</h3>${groups[date].filter(showRow).map(row=>{
   const m=savedRowMetrics(row),idx=rows.indexOf(row);
   const updated=date===today && updatedSinceReset(row,markers);
+  const tracked=!!movementFlags[movementId(row.date,row.code)];
+  const movementButton=`<button type="button" class="recheck-btn movement-btn" data-index="${idx}" aria-pressed="${tracked}" style="${tracked?'background:#174d37;color:white;':''}">${tracked?'✓ Movement':'⇄ Movement'}</button>`;
   const indicator=date===today
-    ?`<div class="update-indicator">${updated?'✓ Checked':'● Check again'}</div><div><button type="button" class="recheck-btn" data-index="${idx}">↻ Check again</button></div>`:'';
+    ?`<div class="update-indicator">${updated?'✓ Checked':'● Check again'}</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="recheck-btn" data-index="${idx}">↻ Check again</button>${movementButton}</div>`
+    :`<div>${movementButton}</div>`;
   return `<div class="record ${date===today?(updated?'yesterday-updated':'yesterday-pending'):''}"><div><button type="button" class="code loadCombined"  data-index="${idx}">${esc(row.code)}</button>${indicator}<div class="hint">Warehouse: ${row.warehouse?m.warehouse.toLocaleString():'Not saved'} + Office: ${row.office?m.office.toLocaleString():'Not saved'}</div>${m.hasSystem?`<div class="hint">System: ${m.system.toLocaleString()} · ${m.initial<0?Math.abs(m.initial).toLocaleString()+' Short':m.initial>0?m.initial.toLocaleString()+' Excess':'Matched'}</div>`:''}</div><div class="recordRight"><div class="amount">${m.adjusted.toLocaleString()}</div><button type="button" class="deleteCombined" data-index="${idx}" aria-label="Delete combined ${esc(row.code)}">−</button></div></div>`;
  }).join('')}</div>`).join('') || '<div class="empty">No matching products for this search and date selection.</div>';
 }
@@ -568,7 +579,15 @@ function loadCombinedRow(row){
  window.scrollTo({top:0,behavior:'smooth'});
 }
 el('history').addEventListener('click',e=>{
- const rows=combinedSavedRows(),load=e.target.closest('.loadCombined'),del=e.target.closest('.deleteCombined'),recheck=e.target.closest('.recheck-btn');if(recheck){const row=rows[Number(recheck.dataset.index)];if(!row)return;const markers=getRechecks();markers[recheckId(row.date,row.code)]=Date.now();try{localStorage.setItem(RECHECK_KEY,JSON.stringify(markers))}catch(err){el('status').textContent='Cannot save recheck status: '+err.message;return}renderHistory();el('status').textContent=`${row.code} marked for recheck. Saved counts unchanged.`;return}
+ const rows=combinedSavedRows(),load=e.target.closest('.loadCombined'),del=e.target.closest('.deleteCombined'),movement=e.target.closest('.movement-btn'),recheck=e.target.closest('.recheck-btn');
+ if(movement){
+  const row=rows[Number(movement.dataset.index)];if(!row)return;
+  const flags=getMovementFlags(),id=movementId(row.date,row.code),wasTracked=!!flags[id];
+  if(wasTracked)delete flags[id];else flags[id]=true;
+  try{localStorage.setItem(MOVEMENT_KEY,JSON.stringify(flags))}catch(err){el('status').textContent='Cannot save movement flag: '+err.message;return}
+  renderHistory();el('status').textContent=`${row.code} (${row.date}) ${wasTracked?'removed from':'added to'} Movement. Stock quantities unchanged.`;return;
+ }
+ if(recheck){const row=rows[Number(recheck.dataset.index)];if(!row)return;const markers=getRechecks();markers[recheckId(row.date,row.code)]=Date.now();try{localStorage.setItem(RECHECK_KEY,JSON.stringify(markers))}catch(err){el('status').textContent='Cannot save recheck status: '+err.message;return}renderHistory();el('status').textContent=`${row.code} marked for recheck. Saved counts unchanged.`;return}
  if(load){const row=rows[Number(load.dataset.index)];if(row){loadCombinedRow(row);document.querySelector('#quickBottomNav [data-quick=calc]')?.click();}return}
  if(del){const row=rows[Number(del.dataset.index)];if(!row)return;
   if(!confirm(`Delete Warehouse and Office saved counts for ${row.code} on ${row.date}?`))return;
@@ -671,7 +690,7 @@ el('export').addEventListener('click',()=>{
 // Portable full-data backup (not the summary-only CSV). Includes inventory, POs,
 // carton/box settings and price tag changes; only the app's own keys are touched.
 const WORKING_KEY='palletCounterWorkingLabelsV1';
-const BACKUP_KEYS=[WORKING_KEY,RECHECK_KEY,ADJUST_KEY,LEGACY_MIGRATION_KEY,KEY,'palletCounterCustomDimensionsV1','palletCounterCustomPricesV1','palletCounterSavedCartonBoxV1','palletCounterPickingPOsV1'];
+const BACKUP_KEYS=[WORKING_KEY,RECHECK_KEY,MOVEMENT_KEY,ADJUST_KEY,LEGACY_MIGRATION_KEY,KEY,'palletCounterCustomDimensionsV1','palletCounterCustomPricesV1','palletCounterSavedCartonBoxV1','palletCounterPickingPOsV1'];
 function downloadBackup(){
  const data={format:'pallet-counter-backup',version:1,exportedAt:new Date().toISOString(),stores:{}};
  BACKUP_KEYS.forEach(key=>{const value=localStorage.getItem(key);if(value!==null){
@@ -702,6 +721,7 @@ el('importDataFile').addEventListener('change',async e=>{
   if(!Object.keys(stores).length)throw new Error('Backup contains no data.');
   if(KEY in stores && (!Array.isArray(stores[KEY])||stores[KEY].some(r=>!r||typeof r!=='object'||typeof r.date!=='string'||typeof r.code!=='string'||!Number.isFinite(Number(r.amount)))))
    throw new Error('Invalid inventory records.');
+  if(MOVEMENT_KEY in stores){const flags=stores[MOVEMENT_KEY];if(!flags||typeof flags!=='object'||Array.isArray(flags)||Object.values(flags).some(v=>typeof v!=='boolean'))throw new Error('Invalid movement flags in backup.');}
   if(ADJUST_KEY in stores){const entries=stores[ADJUST_KEY];if(!entries||typeof entries!=='object'||Array.isArray(entries)||Object.values(entries).some(a=>!Array.isArray(a)||a.some(x=>!x||!Number.isSafeInteger(x.pieces)||x.pieces<=0||!['plus','minus','note'].includes(x.action)||typeof x.note!=='string'||typeof x.id!=='string'||typeof x.active!=='boolean')))throw new Error('Invalid stock adjustments in backup.')}
   // Old backups may contain removed notes; discard them during restore and keep
   // legacy migration IDs so historical backtracks cannot recreate removed notes.
